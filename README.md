@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Golf Weekend
 
-## Getting Started
+Score tracking, handicaps, matchups, and a dashboard for the weekend: Friday AM/PM,
+Saturday AM/PM, Sunday AM. The two PM rounds are scrambles (team score only, no
+individual scoring); the three AM rounds are individually scored, hole-by-hole.
 
-First, run the development server:
+There is no login system — it's a private app for a trip with 8 people, meant to be
+reached via an unguessable URL. Anyone with the link can play any player's scores and
+use the Admin panel. Don't reuse this Supabase project for anything else, and don't
+point the anon key it uses at any schema with real personal data.
+
+## 1. Create a Supabase project
+
+1. Go to [supabase.com](https://supabase.com), create a free account/project.
+2. In the project, open **SQL Editor → New query**, paste the contents of
+   [`supabase/schema.sql`](supabase/schema.sql), and run it. This creates the tables,
+   seeds the 5 rounds, and sets up RLS policies that allow the app's anon key to read
+   and write everything (see note above on why that's an intentional tradeoff here).
+3. Go to **Project Settings → API** and copy the **Project URL** and the **anon
+   public** key.
+
+## 2. Configure environment variables
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.local.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` with the values
+from step 1.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 3. Run locally
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+Open [http://localhost:3000](http://localhost:3000).
 
-To learn more about Next.js, take a look at the following resources:
+## 4. Add players and matchups
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+In the **Admin** tab: add the 8 players with their handicaps, then build matchups/
+teams per round. Each player picks their own name once from the header ("Playing as")
+and it's remembered on their phone (localStorage) — they use the **Score** tab to
+enter their own hole-by-hole scores for the three individual rounds. Admin can edit
+anyone's scores under Admin → Edit Scores, and can enter scramble team scores under
+Admin → Matchups.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Scoring: net round score = gross strokes − handicap, applied per round. The dashboard
+leaderboard sums net score across the individual rounds that have been started.
 
-## Deploy on Vercel
+## 5. Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Push this repo to GitHub, then import it on [vercel.com/new](https://vercel.com/new).
+Add the same two `NEXT_PUBLIC_SUPABASE_*` environment variables in the Vercel project
+settings. Share the resulting `*.vercel.app` URL with the group.
