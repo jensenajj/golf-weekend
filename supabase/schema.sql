@@ -17,6 +17,7 @@ create table if not exists rounds (
   session text not null check (session in ('AM', 'PM')),
   format text not null check (format in ('individual', 'scramble')),
   course text,
+  tee text not null default 'Blue',
   sort_order int not null,
   unique (day, session)
 );

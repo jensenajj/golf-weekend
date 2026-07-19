@@ -14,6 +14,7 @@ export type Round = {
   session: "AM" | "PM";
   format: RoundFormat;
   course: string | null;
+  tee: string;
   sort_order: number;
 };
 

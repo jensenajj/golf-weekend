@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/score", label: "Score" },
   { href: "/matchups", label: "Matchups" },
+  { href: "/scorecard", label: "Scorecard" },
   { href: "/admin", label: "Admin" },
 ];
 
@@ -17,7 +18,9 @@ export function Nav() {
     <nav className="flex gap-1 overflow-x-auto px-4 pb-2 pt-1">
       {LINKS.map((link) => {
         const active =
-          link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+          link.href === "/"
+            ? pathname === "/"
+            : pathname === link.href || pathname.startsWith(`${link.href}/`);
         return (
           <Link
             key={link.href}
