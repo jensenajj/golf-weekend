@@ -34,7 +34,14 @@ export default function MatchupsPage() {
         return (
           <section key={round.id}>
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-semibold">{round.label}</h2>
+              <h2 className="font-semibold">
+                {round.label}
+                {round.course && (
+                  <span className="ml-2 text-xs font-normal text-neutral-500">
+                    {round.course}
+                  </span>
+                )}
+              </h2>
               <span
                 className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                   round.format === "scramble"

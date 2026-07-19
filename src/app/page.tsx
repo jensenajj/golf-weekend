@@ -167,7 +167,14 @@ export default function DashboardPage() {
                 className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3"
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="font-medium">{round.label}</span>
+                  <span className="font-medium">
+                    {round.label}
+                    {round.course && (
+                      <span className="ml-2 text-xs font-normal text-neutral-500">
+                        {round.course}
+                      </span>
+                    )}
+                  </span>
                   <RoundBadge round={round} />
                 </div>
                 {groups.length === 0 ? (

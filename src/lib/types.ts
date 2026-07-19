@@ -13,6 +13,7 @@ export type Round = {
   day: string;
   session: "AM" | "PM";
   format: RoundFormat;
+  course: string | null;
   sort_order: number;
 };
 

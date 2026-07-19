@@ -16,7 +16,9 @@ create table if not exists rounds (
   day text not null,
   session text not null check (session in ('AM', 'PM')),
   format text not null check (format in ('individual', 'scramble')),
-  sort_order int not null
+  course text,
+  sort_order int not null,
+  unique (day, session)
 );
 
 create table if not exists groups (
@@ -44,14 +46,14 @@ create table if not exists hole_scores (
 );
 
 -- Seed the fixed weekend schedule (safe to re-run).
-insert into rounds (label, day, session, format, sort_order)
+insert into rounds (label, day, session, format, course, sort_order)
 values
-  ('Friday AM', 'Friday', 'AM', 'individual', 1),
-  ('Friday PM', 'Friday', 'PM', 'scramble', 2),
-  ('Saturday AM', 'Saturday', 'AM', 'individual', 3),
-  ('Saturday PM', 'Saturday', 'PM', 'scramble', 4),
-  ('Sunday AM', 'Sunday', 'AM', 'individual', 5)
-on conflict do nothing;
+  ('Friday AM', 'Friday', 'AM', 'individual', 'Denison Golf Club', 1),
+  ('Friday PM', 'Friday', 'PM', 'scramble', 'Denison Golf Club', 2),
+  ('Saturday AM', 'Saturday', 'AM', 'individual', 'Virtues Golf Club', 3),
+  ('Saturday PM', 'Saturday', 'PM', 'scramble', 'Virtues Golf Club', 4),
+  ('Sunday AM', 'Sunday', 'AM', 'individual', 'Virtues Golf Club', 5)
+on conflict (day, session) do nothing;
 
 -- Seed the 8 players (handicaps default to 0 — set the real values in Admin).
 insert into players (name, handicap)
