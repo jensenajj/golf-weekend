@@ -22,11 +22,25 @@ function strokeBg(n: number) {
   return "";
 }
 
+function statusRing(status: CellStatus | undefined) {
+  if (status === "error") return "ring-2 ring-inset ring-red-500";
+  if (status === "saving") return "ring-1 ring-inset ring-amber-400";
+  if (status === "saved") return "ring-1 ring-inset ring-emerald-400";
+  return "";
+}
+
+type CellStatus = "saving" | "saved" | "error";
+
+function cellKey(roundId: string, playerId: string, hole: number) {
+  return `${roundId}:${playerId}:${hole}`;
+}
+
 export default function ScorecardPage() {
   const { currentPlayer } = usePlayers();
   const [data, setData] = useState<FullData | null>(null);
   const [roundId, setRoundId] = useState<string | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [cellStatus, setCellStatus] = useState<Record<string, CellStatus>>({});
 
   const load = useCallback(() => {
     fetchAll().then((d) => {
@@ -92,6 +106,20 @@ export default function ScorecardPage() {
     ? data.carts.filter((c) => c.group_id === group.id).sort((a, b) => a.sort_order - b.sort_order)
     : [];
 
+  const failedCells = round
+    ? Object.entries(cellStatus)
+        .filter(([key, status]) => status === "error" && key.startsWith(`${round.id}:`))
+        .map(([key]) => {
+          const [, playerId, holeStr] = key.split(":");
+          return {
+            key,
+            hole: Number(holeStr),
+            playerName: data.players.find((p) => p.id === playerId)?.name ?? "?",
+          };
+        })
+        .sort((a, b) => a.hole - b.hole)
+    : [];
+
   function cartLabel() {
     return groupCarts
       .map((c) => {
@@ -127,24 +155,43 @@ export default function ScorecardPage() {
   async function saveScore(playerId: string, hole: number, raw: string) {
     if (!round) return;
     const trimmed = raw.trim();
-    if (trimmed === "") {
-      await supabase
-        .from("hole_scores")
-        .delete()
-        .eq("round_id", round.id)
-        .eq("player_id", playerId)
-        .eq("hole", hole);
-    } else {
+    if (trimmed !== "") {
       const strokes = parseInt(trimmed, 10);
       if (!Number.isFinite(strokes) || strokes <= 0) return;
-      await supabase
-        .from("hole_scores")
-        .upsert(
-          { round_id: round.id, player_id: playerId, hole, strokes },
-          { onConflict: "round_id,player_id,hole" }
-        );
     }
-    load();
+
+    const key = cellKey(round.id, playerId, hole);
+    setCellStatus((prev) => ({ ...prev, [key]: "saving" }));
+
+    try {
+      const result =
+        trimmed === ""
+          ? await supabase
+              .from("hole_scores")
+              .delete()
+              .eq("round_id", round.id)
+              .eq("player_id", playerId)
+              .eq("hole", hole)
+          : await supabase.from("hole_scores").upsert(
+              { round_id: round.id, player_id: playerId, hole, strokes: parseInt(trimmed, 10) },
+              { onConflict: "round_id,player_id,hole" }
+            );
+
+      if (result.error) throw result.error;
+
+      setCellStatus((prev) => ({ ...prev, [key]: "saved" }));
+      setTimeout(() => {
+        setCellStatus((prev) => {
+          if (prev[key] !== "saved") return prev;
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      }, 1500);
+      load();
+    } catch {
+      setCellStatus((prev) => ({ ...prev, [key]: "error" }));
+    }
   }
 
   function sumGross(playerId: string, holes: number[]) {
@@ -316,6 +363,18 @@ export default function ScorecardPage() {
             </p>
           )}
 
+          {failedCells.length > 0 && (
+            <div className="rounded-xl border border-red-500/50 bg-red-950/40 px-3 py-2 text-sm text-red-300">
+              <p className="font-medium">
+                {failedCells.length} score{failedCells.length > 1 ? "s" : ""} didn&apos;t save
+                — check your connection and re-enter:
+              </p>
+              <p className="mt-0.5 text-red-400">
+                {failedCells.map((c) => `${c.playerName} hole ${c.hole}`).join(", ")}
+              </p>
+            </div>
+          )}
+
           {course && group && (
             <div className="overflow-x-auto rounded-xl border border-neutral-800">
               <table className="text-sm">
@@ -385,8 +444,12 @@ export default function ScorecardPage() {
                           {FRONT.map((h) => {
                             const strokes = strokesReceived(m.handicap, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
+                            const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
-                              <td key={h} className={cellClass(strokeBg(strokes))}>
+                              <td
+                                key={h}
+                                className={cellClass(`${strokeBg(strokes)} ${statusRing(status)}`)}
+                              >
                                 {canEdit ? (
                                   <input
                                     defaultValue={val ?? ""}
@@ -406,8 +469,12 @@ export default function ScorecardPage() {
                           {BACK.map((h) => {
                             const strokes = strokesReceived(m.handicap, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
+                            const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
-                              <td key={h} className={cellClass(strokeBg(strokes))}>
+                              <td
+                                key={h}
+                                className={cellClass(`${strokeBg(strokes)} ${statusRing(status)}`)}
+                              >
                                 {canEdit ? (
                                   <input
                                     defaultValue={val ?? ""}
