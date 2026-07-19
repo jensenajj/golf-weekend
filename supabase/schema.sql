@@ -27,6 +27,9 @@ create table if not exists groups (
   round_id uuid not null references rounds(id) on delete cascade,
   name text not null,
   team_score int,
+  -- The one player allowed to enter/edit gross scores for the whole group
+  -- on the Scorecard view (self-claimed, or set here by admin).
+  scorekeeper_id uuid references players(id) on delete set null,
   sort_order int not null default 0
 );
 
@@ -34,6 +37,20 @@ create table if not exists group_members (
   group_id uuid not null references groups(id) on delete cascade,
   player_id uuid not null references players(id) on delete cascade,
   primary key (group_id, player_id)
+);
+
+-- Carts subdivide a group (e.g. a foursome) into pairs for cart-vs-cart games.
+create table if not exists carts (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references groups(id) on delete cascade,
+  name text not null,
+  sort_order int not null default 0
+);
+
+create table if not exists cart_members (
+  cart_id uuid not null references carts(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  primary key (cart_id, player_id)
 );
 
 create table if not exists hole_scores (
@@ -79,6 +96,8 @@ alter table players enable row level security;
 alter table rounds enable row level security;
 alter table groups enable row level security;
 alter table group_members enable row level security;
+alter table carts enable row level security;
+alter table cart_members enable row level security;
 alter table hole_scores enable row level security;
 
 drop policy if exists "public_all_players" on players;
@@ -92,6 +111,12 @@ create policy "public_all_groups" on groups for all using (true) with check (tru
 
 drop policy if exists "public_all_group_members" on group_members;
 create policy "public_all_group_members" on group_members for all using (true) with check (true);
+
+drop policy if exists "public_all_carts" on carts;
+create policy "public_all_carts" on carts for all using (true) with check (true);
+
+drop policy if exists "public_all_cart_members" on cart_members;
+create policy "public_all_cart_members" on cart_members for all using (true) with check (true);
 
 drop policy if exists "public_all_hole_scores" on hole_scores;
 create policy "public_all_hole_scores" on hole_scores for all using (true) with check (true);

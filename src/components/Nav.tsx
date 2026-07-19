@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/score", label: "Score" },
   { href: "/matchups", label: "Matchups" },
   { href: "/scorecard", label: "Scorecard" },
+  { href: "/games", label: "Games" },
   { href: "/admin", label: "Admin" },
 ];
 

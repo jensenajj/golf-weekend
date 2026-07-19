@@ -1,19 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { supabase } from "@/lib/supabase";
-import { COURSES, DEFAULT_TEE, TeeName } from "@/lib/courseData";
+import { COURSES, DEFAULT_TEE, TeeName, hasHandicapData } from "@/lib/courseData";
+import { strokesReceived } from "@/lib/handicap";
+import { usePlayers } from "@/components/PlayerProvider";
+import { Player } from "@/lib/types";
 
 const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const BACK = [10, 11, 12, 13, 14, 15, 16, 17, 18];
 
 function cellClass(extra = "") {
-  return `min-w-[34px] px-1.5 py-1 text-center ${extra}`;
+  return `min-w-[36px] px-1.5 py-1 text-center ${extra}`;
+}
+
+function strokeBg(n: number) {
+  if (n >= 2) return "bg-sky-500/25";
+  if (n === 1) return "bg-sky-500/10";
+  return "";
 }
 
 export default function ScorecardPage() {
+  const { currentPlayer } = usePlayers();
   const [data, setData] = useState<FullData | null>(null);
   const [roundId, setRoundId] = useState<string | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
@@ -29,7 +39,10 @@ export default function ScorecardPage() {
     load();
   }, [load]);
 
-  useRealtimeRefresh(["rounds", "groups", "group_members", "hole_scores"], load);
+  useRealtimeRefresh(
+    ["rounds", "groups", "group_members", "carts", "cart_members", "hole_scores"],
+    load
+  );
 
   if (!data) return <p className="text-neutral-400">Loading…</p>;
 
@@ -45,10 +58,26 @@ export default function ScorecardPage() {
   const tee = (course?.tees.includes(round?.tee as TeeName) ? round?.tee : DEFAULT_TEE) as
     | TeeName
     | undefined;
+  const showHandicap = course ? hasHandicapData(course) : false;
 
   async function setTee(value: string) {
     if (!round) return;
     await supabase.from("rounds").update({ tee: value }).eq("id", round.id);
+    load();
+  }
+
+  async function claimScorekeeper() {
+    if (!group || !currentPlayer) return;
+    await supabase
+      .from("groups")
+      .update({ scorekeeper_id: currentPlayer.id })
+      .eq("id", group.id);
+    load();
+  }
+
+  async function releaseScorekeeper() {
+    if (!group) return;
+    await supabase.from("groups").update({ scorekeeper_id: null }).eq("id", group.id);
     load();
   }
 
@@ -57,7 +86,24 @@ export default function ScorecardPage() {
     : [];
   const members = memberIds
     .map((id) => data.players.find((p) => p.id === id))
-    .filter((p): p is NonNullable<typeof p> => Boolean(p));
+    .filter((p): p is Player => Boolean(p));
+
+  const groupCarts = group
+    ? data.carts.filter((c) => c.group_id === group.id).sort((a, b) => a.sort_order - b.sort_order)
+    : [];
+
+  function cartLabel() {
+    return groupCarts
+      .map((c) => {
+        const names = data!.cartMembers
+          .filter((cm) => cm.cart_id === c.id)
+          .map((cm) => data!.players.find((p) => p.id === cm.player_id)?.name)
+          .filter(Boolean)
+          .join(", ");
+        return `${c.name}: ${names || "—"}`;
+      })
+      .join(" · ");
+  }
 
   function strokesFor(playerId: string, hole: number) {
     if (!round) return null;
@@ -67,25 +113,67 @@ export default function ScorecardPage() {
     return row?.strokes ?? null;
   }
 
-  function sumRange(playerId: string, holes: number[]) {
-    const vals = holes.map((h) => strokesFor(playerId, h)).filter((v): v is number => v != null);
+  function holeInfo(hole: number) {
+    return course?.holes.find((c) => c.hole === hole);
+  }
+
+  const canEdit = Boolean(
+    round?.format === "individual" &&
+      group &&
+      currentPlayer &&
+      group.scorekeeper_id === currentPlayer.id
+  );
+
+  async function saveScore(playerId: string, hole: number, raw: string) {
+    if (!round) return;
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      await supabase
+        .from("hole_scores")
+        .delete()
+        .eq("round_id", round.id)
+        .eq("player_id", playerId)
+        .eq("hole", hole);
+    } else {
+      const strokes = parseInt(trimmed, 10);
+      if (!Number.isFinite(strokes) || strokes <= 0) return;
+      await supabase
+        .from("hole_scores")
+        .upsert(
+          { round_id: round.id, player_id: playerId, hole, strokes },
+          { onConflict: "round_id,player_id,hole" }
+        );
+    }
+    load();
+  }
+
+  function sumGross(playerId: string, holes: number[]) {
+    const vals = holes
+      .map((h) => strokesFor(playerId, h))
+      .filter((v): v is number => v != null);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
+  }
+
+  function sumNet(playerId: string, handicap: number, holes: number[]) {
+    if (!showHandicap) return null;
+    const vals = holes
+      .map((h) => {
+        const gross = strokesFor(playerId, h);
+        if (gross == null) return null;
+        return gross - strokesReceived(handicap, holeInfo(h)?.handicap);
+      })
+      .filter((v): v is number => v != null);
     return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
   }
 
   function sumYards(holes: number[]) {
     if (!course || !tee) return null;
-    return holes.reduce((sum, h) => {
-      const holeData = course.holes.find((c) => c.hole === h);
-      return sum + (holeData?.yards[tee] ?? 0);
-    }, 0);
+    return holes.reduce((sum, h) => sum + (holeInfo(h)?.yards[tee] ?? 0), 0);
   }
 
   function sumPar(holes: number[]) {
     if (!course) return null;
-    return holes.reduce((sum, h) => {
-      const holeData = course.holes.find((c) => c.hole === h);
-      return sum + (holeData?.par ?? 0);
-    }, 0);
+    return holes.reduce((sum, h) => sum + (holeInfo(h)?.par ?? 0), 0);
   }
 
   return (
@@ -112,16 +200,14 @@ export default function ScorecardPage() {
       {round && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="font-semibold">
-                {round.label}
-                {round.course && (
-                  <span className="ml-2 text-sm font-normal text-neutral-500">
-                    {round.course}
-                  </span>
-                )}
-              </p>
-            </div>
+            <p className="font-semibold">
+              {round.label}
+              {round.course && (
+                <span className="ml-2 text-sm font-normal text-neutral-500">
+                  {round.course}
+                </span>
+              )}
+            </p>
             {course && (
               <label className="flex items-center gap-1.5 text-sm text-neutral-400">
                 Tees
@@ -169,6 +255,47 @@ export default function ScorecardPage() {
             </p>
           )}
 
+          {round.format === "individual" && group && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-sm">
+              <div>
+                {group.scorekeeper_id ? (
+                  <span className="text-neutral-300">
+                    Scorekeeper:{" "}
+                    <span className="font-medium text-neutral-100">
+                      {data.players.find((p) => p.id === group.scorekeeper_id)?.name}
+                    </span>
+                    {currentPlayer?.id === group.scorekeeper_id && " (you)"}
+                  </span>
+                ) : (
+                  <span className="text-neutral-500">No scorekeeper claimed yet.</span>
+                )}
+              </div>
+              {currentPlayer && memberIds.includes(currentPlayer.id) && (
+                <>
+                  {group.scorekeeper_id === currentPlayer.id ? (
+                    <button
+                      onClick={releaseScorekeeper}
+                      className="text-xs text-red-400 hover:text-red-300"
+                    >
+                      Release
+                    </button>
+                  ) : !group.scorekeeper_id ? (
+                    <button
+                      onClick={claimScorekeeper}
+                      className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white"
+                    >
+                      Become scorekeeper
+                    </button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
+
+          {round.format === "individual" && groupCarts.length > 0 && (
+            <p className="text-xs text-neutral-500">{cartLabel()}</p>
+          )}
+
           {course && group && round.format === "scramble" && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3">
               <p className="font-medium">{group.name}</p>
@@ -181,6 +308,12 @@ export default function ScorecardPage() {
                 </p>
               )}
             </div>
+          )}
+
+          {round.format === "individual" && !showHandicap && (
+            <p className="text-xs text-amber-400">
+              {`Hole handicaps (stroke index) aren't set for ${round.course} yet, so per-hole net scores and stroke indicators aren't shown here. Round totals on the Dashboard still use each player's flat handicap.`}
+            </p>
           )}
 
           {course && group && (
@@ -204,15 +337,11 @@ export default function ScorecardPage() {
                   <tr className="border-t border-neutral-800 text-neutral-400">
                     <td className={cellClass("text-left sticky left-0 bg-neutral-950")}>Par</td>
                     {FRONT.map((h) => (
-                      <td key={h} className={cellClass()}>
-                        {course.holes.find((c) => c.hole === h)?.par}
-                      </td>
+                      <td key={h} className={cellClass()}>{holeInfo(h)?.par}</td>
                     ))}
                     <td className={cellClass("font-semibold")}>{sumPar(FRONT)}</td>
                     {BACK.map((h) => (
-                      <td key={h} className={cellClass()}>
-                        {course.holes.find((c) => c.hole === h)?.par}
-                      </td>
+                      <td key={h} className={cellClass()}>{holeInfo(h)?.par}</td>
                     ))}
                     <td className={cellClass("font-semibold")}>{sumPar(BACK)}</td>
                     <td className={cellClass("font-semibold")}>{sumPar([...FRONT, ...BACK])}</td>
@@ -220,48 +349,126 @@ export default function ScorecardPage() {
                   <tr className="border-t border-neutral-800 text-neutral-500">
                     <td className={cellClass("text-left sticky left-0 bg-neutral-950")}>Yds</td>
                     {FRONT.map((h) => (
-                      <td key={h} className={cellClass()}>
-                        {course.holes.find((c) => c.hole === h)?.yards[tee!]}
-                      </td>
+                      <td key={h} className={cellClass()}>{holeInfo(h)?.yards[tee!]}</td>
                     ))}
                     <td className={cellClass("font-semibold")}>{sumYards(FRONT)}</td>
                     {BACK.map((h) => (
-                      <td key={h} className={cellClass()}>
-                        {course.holes.find((c) => c.hole === h)?.yards[tee!]}
-                      </td>
+                      <td key={h} className={cellClass()}>{holeInfo(h)?.yards[tee!]}</td>
                     ))}
                     <td className={cellClass("font-semibold")}>{sumYards(BACK)}</td>
                     <td className={cellClass("font-semibold")}>
                       {sumYards([...FRONT, ...BACK])}
                     </td>
                   </tr>
+                  {showHandicap && (
+                    <tr className="border-t border-neutral-800 text-neutral-600">
+                      <td className={cellClass("text-left sticky left-0 bg-neutral-950")}>Hcp</td>
+                      {FRONT.map((h) => (
+                        <td key={h} className={cellClass()}>{holeInfo(h)?.handicap}</td>
+                      ))}
+                      <td className={cellClass()} />
+                      {BACK.map((h) => (
+                        <td key={h} className={cellClass()}>{holeInfo(h)?.handicap}</td>
+                      ))}
+                      <td className={cellClass()} />
+                      <td className={cellClass()} />
+                    </tr>
+                  )}
 
                   {round.format === "individual" &&
-                    (members.length > 0 ? members : []).map((m) => (
-                      <tr key={m.id} className="border-t border-neutral-800">
-                        <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
-                          {m.name}
-                        </td>
-                        {FRONT.map((h) => (
-                          <td key={h} className={cellClass()}>
-                            {strokesFor(m.id, h) ?? "–"}
+                    members.map((m) => (
+                      <Fragment key={m.id}>
+                        <tr className="border-t border-neutral-800">
+                          <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
+                            {m.name}
                           </td>
-                        ))}
-                        <td className={cellClass("font-semibold")}>
-                          {sumRange(m.id, FRONT) ?? "–"}
-                        </td>
-                        {BACK.map((h) => (
-                          <td key={h} className={cellClass()}>
-                            {strokesFor(m.id, h) ?? "–"}
+                          {FRONT.map((h) => {
+                            const strokes = strokesReceived(m.handicap, holeInfo(h)?.handicap);
+                            const val = strokesFor(m.id, h);
+                            return (
+                              <td key={h} className={cellClass(strokeBg(strokes))}>
+                                {canEdit ? (
+                                  <input
+                                    defaultValue={val ?? ""}
+                                    onBlur={(e) => saveScore(m.id, h, e.target.value)}
+                                    inputMode="numeric"
+                                    className="w-8 bg-transparent text-center outline-none"
+                                  />
+                                ) : (
+                                  val ?? "–"
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className={cellClass("font-semibold")}>
+                            {sumGross(m.id, FRONT) ?? "–"}
                           </td>
-                        ))}
-                        <td className={cellClass("font-semibold")}>
-                          {sumRange(m.id, BACK) ?? "–"}
-                        </td>
-                        <td className={cellClass("font-semibold")}>
-                          {sumRange(m.id, [...FRONT, ...BACK]) ?? "–"}
-                        </td>
-                      </tr>
+                          {BACK.map((h) => {
+                            const strokes = strokesReceived(m.handicap, holeInfo(h)?.handicap);
+                            const val = strokesFor(m.id, h);
+                            return (
+                              <td key={h} className={cellClass(strokeBg(strokes))}>
+                                {canEdit ? (
+                                  <input
+                                    defaultValue={val ?? ""}
+                                    onBlur={(e) => saveScore(m.id, h, e.target.value)}
+                                    inputMode="numeric"
+                                    className="w-8 bg-transparent text-center outline-none"
+                                  />
+                                ) : (
+                                  val ?? "–"
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className={cellClass("font-semibold")}>
+                            {sumGross(m.id, BACK) ?? "–"}
+                          </td>
+                          <td className={cellClass("font-semibold")}>
+                            {sumGross(m.id, [...FRONT, ...BACK]) ?? "–"}
+                          </td>
+                        </tr>
+                        {showHandicap && (
+                          <tr key={`${m.id}-net`} className="text-xs text-sky-300/80">
+                            <td className={cellClass("text-left sticky left-0 bg-neutral-950 pl-4")}>
+                              net
+                            </td>
+                            {FRONT.map((h) => {
+                              const gross = strokesFor(m.id, h);
+                              const net =
+                                gross != null
+                                  ? gross - strokesReceived(m.handicap, holeInfo(h)?.handicap)
+                                  : null;
+                              return (
+                                <td key={h} className={cellClass()}>
+                                  {net ?? "–"}
+                                </td>
+                              );
+                            })}
+                            <td className={cellClass("font-semibold")}>
+                              {sumNet(m.id, m.handicap, FRONT) ?? "–"}
+                            </td>
+                            {BACK.map((h) => {
+                              const gross = strokesFor(m.id, h);
+                              const net =
+                                gross != null
+                                  ? gross - strokesReceived(m.handicap, holeInfo(h)?.handicap)
+                                  : null;
+                              return (
+                                <td key={h} className={cellClass()}>
+                                  {net ?? "–"}
+                                </td>
+                              );
+                            })}
+                            <td className={cellClass("font-semibold")}>
+                              {sumNet(m.id, m.handicap, BACK) ?? "–"}
+                            </td>
+                            <td className={cellClass("font-semibold")}>
+                              {sumNet(m.id, m.handicap, [...FRONT, ...BACK]) ?? "–"}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     ))}
                 </tbody>
               </table>

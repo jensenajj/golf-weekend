@@ -23,11 +23,24 @@ export type Group = {
   round_id: string;
   name: string;
   team_score: number | null;
+  scorekeeper_id: string | null;
   sort_order: number;
 };
 
 export type GroupMember = {
   group_id: string;
+  player_id: string;
+};
+
+export type Cart = {
+  id: string;
+  group_id: string;
+  name: string;
+  sort_order: number;
+};
+
+export type CartMember = {
+  cart_id: string;
   player_id: string;
 };
 
