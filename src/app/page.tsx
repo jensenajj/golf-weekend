@@ -6,20 +6,24 @@ import { grossTotal, netScore } from "@/lib/scoring";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { Player, Round } from "@/lib/types";
 
+type ScoreMode = "net" | "gross";
+
 type PlayerLine = {
   player: Player;
   perRound: Record<string, { gross: number; holes: number; net: number } | null>;
   totalNet: number;
+  totalGross: number;
   roundsStarted: number;
 };
 
-function buildLeaderboard(data: FullData): PlayerLine[] {
+function buildLeaderboard(data: FullData, mode: ScoreMode): PlayerLine[] {
   const individualRounds = data.rounds.filter((r) => r.format === "individual");
 
   return data.players
     .map((player) => {
       const perRound: PlayerLine["perRound"] = {};
       let totalNet = 0;
+      let totalGross = 0;
       let roundsStarted = 0;
 
       for (const round of individualRounds) {
@@ -34,16 +38,17 @@ function buildLeaderboard(data: FullData): PlayerLine[] {
         const net = netScore(gross, player.handicap);
         perRound[round.id] = { gross, holes: scores.length, net };
         totalNet += net;
+        totalGross += gross;
         roundsStarted += 1;
       }
 
-      return { player, perRound, totalNet, roundsStarted };
+      return { player, perRound, totalNet, totalGross, roundsStarted };
     })
     .sort((a, b) => {
       if (a.roundsStarted === 0 && b.roundsStarted === 0) return 0;
       if (a.roundsStarted === 0) return 1;
       if (b.roundsStarted === 0) return -1;
-      return a.totalNet - b.totalNet;
+      return mode === "net" ? a.totalNet - b.totalNet : a.totalGross - b.totalGross;
     });
 }
 
@@ -63,6 +68,7 @@ function RoundBadge({ round }: { round: Round }) {
 
 export default function DashboardPage() {
   const [data, setData] = useState<FullData | null>(null);
+  const [mode, setMode] = useState<ScoreMode>("net");
 
   const load = useCallback(() => {
     fetchAll().then(setData);
@@ -89,15 +95,32 @@ export default function DashboardPage() {
     );
   }
 
-  const leaderboard = buildLeaderboard(data);
+  const leaderboard = buildLeaderboard(data, mode);
   const individualRounds = data.rounds.filter((r) => r.format === "individual");
 
   return (
     <div className="space-y-8">
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-          Leaderboard (net)
-        </h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            Leaderboard
+          </h2>
+          <div className="flex gap-1 rounded-full bg-neutral-800 p-0.5">
+            {(["net", "gross"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
+                  mode === m
+                    ? "bg-emerald-600 text-white"
+                    : "text-neutral-400"
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="overflow-x-auto rounded-xl border border-neutral-800">
           <table className="w-full min-w-[420px] text-sm">
             <thead className="bg-neutral-900 text-neutral-400">
@@ -109,11 +132,13 @@ export default function DashboardPage() {
                     {r.day.slice(0, 3)} {r.session}
                   </th>
                 ))}
-                <th className="px-3 py-2 text-right font-medium">Total Net</th>
+                <th className="px-3 py-2 text-right font-medium capitalize">
+                  Total {mode}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {leaderboard.map(({ player, perRound, totalNet, roundsStarted }, i) => (
+              {leaderboard.map(({ player, perRound, totalNet, totalGross, roundsStarted }, i) => (
                 <tr
                   key={player.id}
                   className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
@@ -127,8 +152,8 @@ export default function DashboardPage() {
                     return (
                       <td key={r.id} className="px-3 py-2 text-right text-neutral-300">
                         {cell ? (
-                          <span title={`${cell.holes}/18 holes, gross ${cell.gross}`}>
-                            {cell.net}
+                          <span title={`${cell.holes}/18 holes, gross ${cell.gross}, net ${cell.net}`}>
+                            {mode === "net" ? cell.net : cell.gross}
                             {cell.holes < 18 && (
                               <span className="text-neutral-500">*</span>
                             )}
@@ -140,7 +165,7 @@ export default function DashboardPage() {
                     );
                   })}
                   <td className="px-3 py-2 text-right font-semibold">
-                    {roundsStarted > 0 ? totalNet : "–"}
+                    {roundsStarted > 0 ? (mode === "net" ? totalNet : totalGross) : "–"}
                   </td>
                 </tr>
               ))}
