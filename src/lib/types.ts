@@ -73,6 +73,7 @@ export type RoundPayout = {
   round_id: string;
   win_amount: number;
   tie_amount: number;
+  low_net_amount: number;
 };
 
 export type MoneySettings = {

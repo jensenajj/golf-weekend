@@ -42,7 +42,11 @@ export function MoneyPanel() {
     load();
   }
 
-  async function setAmount(roundId: string, field: "win_amount" | "tie_amount", value: string) {
+  async function setAmount(
+    roundId: string,
+    field: "win_amount" | "tie_amount" | "low_net_amount",
+    value: string
+  ) {
     const num = Number(value);
     if (!Number.isFinite(num)) return;
     const existing = payouts.find((p) => p.round_id === roundId);
@@ -51,6 +55,7 @@ export function MoneyPanel() {
         round_id: roundId,
         win_amount: field === "win_amount" ? num : existing?.win_amount ?? 20,
         tie_amount: field === "tie_amount" ? num : existing?.tie_amount ?? 10,
+        low_net_amount: field === "low_net_amount" ? num : existing?.low_net_amount ?? 20,
       },
       { onConflict: "round_id" }
     );
@@ -102,7 +107,8 @@ export function MoneyPanel() {
       <p className="text-xs text-neutral-500">
         Win amount pays each player on the winning side (winning group for AM rounds, winning
         team for scrambles). Tie amount pays every player involved (all 8) instead if that
-        round&apos;s game ends tied.
+        round&apos;s game ends tied. Low Net (individual rounds only) pays whoever&apos;s
+        18-hole net total is lowest across the full field, split evenly on a tie.
       </p>
 
       <div className="space-y-2">
@@ -110,6 +116,7 @@ export function MoneyPanel() {
           const p = payouts.find((x) => x.round_id === r.id);
           const win = p?.win_amount ?? 20;
           const tie = p?.tie_amount ?? 10;
+          const lowNet = p?.low_net_amount ?? 20;
           return (
             <div
               key={r.id}
@@ -142,6 +149,18 @@ export function MoneyPanel() {
                     className="w-14 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-center"
                   />
                 </label>
+                {r.format === "individual" && (
+                  <label className="flex items-center gap-1 text-neutral-400">
+                    Low Net $
+                    <input
+                      key={`${r.id}-lownet-${lowNet}`}
+                      defaultValue={lowNet}
+                      onBlur={(e) => setAmount(r.id, "low_net_amount", e.target.value)}
+                      inputMode="decimal"
+                      className="w-14 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-center"
+                    />
+                  </label>
+                )}
               </div>
             </div>
           );

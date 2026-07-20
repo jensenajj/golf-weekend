@@ -7,6 +7,7 @@ import { COURSES } from "@/lib/courseData";
 import { allHolesEntered, bestBallByHole, scoreMatch } from "@/lib/matchplay";
 import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
+import { computeLowNet } from "@/lib/lowNet";
 import { Round } from "@/lib/types";
 
 function formatMoney(v: number): string {
@@ -26,6 +27,7 @@ function payoutAmountsFor(data: FullData, round: Round) {
   return {
     win: row?.win_amount ?? 20,
     tie: row?.tie_amount ?? 10,
+    lowNetPrize: row?.low_net_amount ?? 20,
   };
 }
 
@@ -121,10 +123,17 @@ export default function MoneyPage() {
   const skins = computeAllSkins(data);
   const skinValue = skins.totalSkins > 0 ? skinsPot / skins.totalSkins : 0;
   const skinsPaidOut = skins.totalSkins > 0 ? skinsPot : 0;
+  const lowNetResults = computeLowNet(data);
+
+  const lowNetPaidOut = lowNetResults.reduce((sum, r) => {
+    if (!r.complete || r.winnerIds.length === 0) return sum;
+    return sum + payoutAmountsFor(data, r.round).lowNetPrize;
+  }, 0);
 
   const paidOut =
     results.reduce((sum, r) => sum + Object.values(r.perPlayer).reduce((s, v) => s + v, 0), 0) +
-    skinsPaidOut;
+    skinsPaidOut +
+    lowNetPaidOut;
   const remaining = totalPot - paidOut;
 
   const playerTotals = data.players
@@ -139,7 +148,12 @@ export default function MoneyPage() {
       const skinsCount = skins.skinsByPlayer[p.id] ?? 0;
       const skinsAmount = skinsCount * skinValue;
       total += skinsAmount;
-      return { player: p, perRound, skinsCount, skinsAmount, total };
+      const lowNetAmount = lowNetResults.reduce((sum, r) => {
+        if (!r.complete || !r.winnerIds.includes(p.id)) return sum;
+        return sum + payoutAmountsFor(data, r.round).lowNetPrize / r.winnerIds.length;
+      }, 0);
+      total += lowNetAmount;
+      return { player: p, perRound, skinsCount, skinsAmount, lowNetAmount, total };
     })
     .sort((a, b) => b.total - a.total);
 
@@ -175,37 +189,47 @@ export default function MoneyPage() {
                   </th>
                 ))}
                 <th className="px-3 py-2 text-right font-medium">Skins</th>
+                <th className="px-3 py-2 text-right font-medium">Low Net</th>
                 <th className="px-3 py-2 text-right font-medium">Total</th>
               </tr>
             </thead>
             <tbody>
-              {playerTotals.map(({ player, perRound, skinsCount, skinsAmount, total }, i) => (
-                <tr
-                  key={player.id}
-                  className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
-                >
-                  <td className="px-3 py-2 font-medium">{player.name}</td>
-                  {results.map((r) => (
-                    <td key={r.round.id} className="px-3 py-2 text-right text-neutral-300">
-                      {perRound[r.round.id] > 0 ? `$${formatMoney(perRound[r.round.id])}` : (
+              {playerTotals.map(
+                ({ player, perRound, skinsCount, skinsAmount, lowNetAmount, total }, i) => (
+                  <tr
+                    key={player.id}
+                    className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
+                  >
+                    <td className="px-3 py-2 font-medium">{player.name}</td>
+                    {results.map((r) => (
+                      <td key={r.round.id} className="px-3 py-2 text-right text-neutral-300">
+                        {perRound[r.round.id] > 0 ? `$${formatMoney(perRound[r.round.id])}` : (
+                          <span className="text-neutral-600">–</span>
+                        )}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2 text-right text-neutral-300">
+                      {skinsCount > 0 ? (
+                        <span title={`${skinsCount} skin${skinsCount > 1 ? "s" : ""}`}>
+                          ${formatMoney(skinsAmount)}
+                        </span>
+                      ) : (
                         <span className="text-neutral-600">–</span>
                       )}
                     </td>
-                  ))}
-                  <td className="px-3 py-2 text-right text-neutral-300">
-                    {skinsCount > 0 ? (
-                      <span title={`${skinsCount} skin${skinsCount > 1 ? "s" : ""}`}>
-                        ${formatMoney(skinsAmount)}
-                      </span>
-                    ) : (
-                      <span className="text-neutral-600">–</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right font-semibold text-emerald-400">
-                    ${formatMoney(total)}
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-3 py-2 text-right text-neutral-300">
+                      {lowNetAmount > 0 ? (
+                        `$${formatMoney(lowNetAmount)}`
+                      ) : (
+                        <span className="text-neutral-600">–</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-emerald-400">
+                      ${formatMoney(total)}
+                    </td>
+                  </tr>
+                )
+              )}
             </tbody>
           </table>
         </div>
@@ -249,6 +273,51 @@ export default function MoneyPage() {
           A round&apos;s payout only counts once its result is final (all scores in for AM
           rounds, both team scores in for scrambles) — in-progress rounds show as pending and
           don&apos;t pay out yet.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Low Net
+        </h2>
+        <div className="space-y-2">
+          {lowNetResults.map((r) => {
+            const { lowNetPrize } = payoutAmountsFor(data, r.round);
+            const winnerNames = r.winnerIds
+              .map((id) => data.players.find((p) => p.id === id)?.name)
+              .filter(Boolean)
+              .join(", ");
+            return (
+              <div
+                key={r.round.id}
+                className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-sm"
+              >
+                <span className="font-medium">
+                  {r.round.label}
+                  <span className="ml-2 text-xs font-normal text-neutral-500">
+                    ${lowNetPrize} to lowest net
+                  </span>
+                </span>
+                {!r.complete ? (
+                  <span className="text-amber-400">In progress</span>
+                ) : r.winnerIds.length > 1 ? (
+                  <span className="text-emerald-400">
+                    {winnerNames} tie at {r.lowNet} — ${formatMoney(lowNetPrize / r.winnerIds.length)}{" "}
+                    each
+                  </span>
+                ) : (
+                  <span className="text-emerald-400">
+                    {winnerNames} wins at {r.lowNet}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-neutral-500">
+          Whoever&apos;s 18-hole net total is lowest across the full field (both groups) for
+          that round wins — only counts once every player in the round has entered all 18
+          holes. A tie splits the prize evenly among the tied players.
         </p>
       </section>
 
