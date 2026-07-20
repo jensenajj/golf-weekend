@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
-import { MatchSide, bestBallByHole, scoreMatch } from "@/lib/matchplay";
+import { MatchSide, bestBallByHole, netFor, scoreMatch } from "@/lib/matchplay";
 import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
+import { RANK_LABELS, computeSinglesMatch, rankedTeamMembers, roundTeams } from "@/lib/singlesMatch";
 import { HOLES } from "@/lib/types";
 
 // Players are already sorted by name (see fetchAll), so filtering preserves
@@ -106,6 +107,8 @@ export default function GamesPage() {
       "group_members",
       "carts",
       "cart_members",
+      "teams",
+      "team_members",
       "hole_scores",
       "scramble_scores",
       "round_handicaps",
@@ -121,6 +124,7 @@ export default function GamesPage() {
   const roundGroups = round
     ? data.groups.filter((g) => g.round_id === round.id).sort((a, b) => a.sort_order - b.sort_order)
     : [];
+  const singlesTeams = round ? roundTeams(data, round.id) : [];
 
   const hasHandicapData = course ? course.holes.every((h) => h.handicap != null) : false;
 
@@ -200,44 +204,118 @@ export default function GamesPage() {
         </p>
       ) : (
         <>
-          <section className="space-y-2">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-              Group vs Group — best 2 net balls of 4
-            </h2>
-            {roundGroups.length !== 2 ? (
-              <p className="text-sm text-neutral-500">
-                Needs exactly 2 groups for this round (found {roundGroups.length}) — set them
-                up in Admin → Matchups.
-              </p>
-            ) : (
-              <MatchTable
-                a={{
-                  label: groupLabel(data, roundGroups[0]),
-                  byHole: bestBallByHole(
-                    data,
-                    round,
-                    course,
-                    data.groupMembers
-                      .filter((m) => m.group_id === roundGroups[0].id)
-                      .map((m) => m.player_id),
-                    2
-                  ),
-                }}
-                b={{
-                  label: groupLabel(data, roundGroups[1]),
-                  byHole: bestBallByHole(
-                    data,
-                    round,
-                    course,
-                    data.groupMembers
-                      .filter((m) => m.group_id === roundGroups[1].id)
-                      .map((m) => m.player_id),
-                    2
-                  ),
-                }}
-              />
-            )}
-          </section>
+          {singlesTeams.length === 2 ? (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+                Team Match Play — A/B/C/D singles
+              </h2>
+              {(() => {
+                const rankedA = rankedTeamMembers(data, round, singlesTeams[0].id);
+                const rankedB = rankedTeamMembers(data, round, singlesTeams[1].id);
+                if (rankedA.length !== 4 || rankedB.length !== 4) {
+                  return (
+                    <p className="text-sm text-neutral-500">
+                      Needs 4 players on each team — finish setting them up in Admin →
+                      Matchups.
+                    </p>
+                  );
+                }
+                const singles = computeSinglesMatch(
+                  data,
+                  round,
+                  singlesTeams[0].id,
+                  singlesTeams[1].id
+                );
+                if (!singles) return null;
+                const winner = !singles.complete
+                  ? null
+                  : singles.totalA > singles.totalB
+                    ? "A"
+                    : singles.totalB > singles.totalA
+                      ? "B"
+                      : "T";
+                return (
+                  <>
+                    <div className="space-y-3">
+                      {RANK_LABELS.map((rank, i) => (
+                        <MatchTable
+                          key={rank}
+                          a={{
+                            label: `${rank}: ${rankedA[i].name}`,
+                            byHole: HOLES.map((h) => netFor(data, round, course, rankedA[i].id, h)),
+                          }}
+                          b={{
+                            label: `${rank}: ${rankedB[i].name}`,
+                            byHole: HOLES.map((h) => netFor(data, round, course, rankedB[i].id, h)),
+                          }}
+                        />
+                      ))}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {[
+                        { team: singlesTeams[0], total: singles.totalA, side: "A" as const },
+                        { team: singlesTeams[1], total: singles.totalB, side: "B" as const },
+                      ].map(({ team, total, side }) => (
+                        <div
+                          key={team.id}
+                          className={`rounded-xl border p-3 ${
+                            winner === side
+                              ? "border-emerald-600 bg-emerald-500/10"
+                              : "border-neutral-800 bg-neutral-900/40"
+                          }`}
+                        >
+                          <p className="font-medium">{team.name}</p>
+                          <p className="text-2xl font-semibold">{total}</p>
+                          <p className="text-xs text-neutral-500">
+                            {singles.complete ? "Final" : "In progress"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+            </section>
+          ) : (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+                Group vs Group — best 2 net balls of 4
+              </h2>
+              {roundGroups.length !== 2 ? (
+                <p className="text-sm text-neutral-500">
+                  Needs exactly 2 groups for this round (found {roundGroups.length}) — set them
+                  up in Admin → Matchups.
+                </p>
+              ) : (
+                <MatchTable
+                  a={{
+                    label: groupLabel(data, roundGroups[0]),
+                    byHole: bestBallByHole(
+                      data,
+                      round,
+                      course,
+                      data.groupMembers
+                        .filter((m) => m.group_id === roundGroups[0].id)
+                        .map((m) => m.player_id),
+                      2
+                    ),
+                  }}
+                  b={{
+                    label: groupLabel(data, roundGroups[1]),
+                    byHole: bestBallByHole(
+                      data,
+                      round,
+                      course,
+                      data.groupMembers
+                        .filter((m) => m.group_id === roundGroups[1].id)
+                        .map((m) => m.player_id),
+                      2
+                    ),
+                  }}
+                />
+              )}
+            </section>
+          )}
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">

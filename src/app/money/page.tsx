@@ -8,6 +8,7 @@ import { allHolesEntered, bestBallByHole, scoreMatch } from "@/lib/matchplay";
 import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { computeLowNet, computeWeekendLowNet } from "@/lib/lowNet";
+import { computeSinglesMatch, rankedTeamMembers, roundTeams } from "@/lib/singlesMatch";
 import { defaultWinAmount, tieAmountFor } from "@/lib/money";
 import { Round } from "@/lib/types";
 
@@ -34,11 +35,42 @@ function payoutAmountsFor(data: FullData, round: Round) {
 }
 
 function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
+  const { win, tie } = payoutAmountsFor(data, round);
+  const perPlayer: Record<string, number> = {};
+
+  // Singles (A/B/C/D) match play takes over a round's money result the
+  // moment it has 2 fully-staffed teams -- see lib/singlesMatch.ts. The
+  // on-course groups (used for scoring/carts/skins/low-net) stay
+  // independent of this and are unaffected.
+  const teams = roundTeams(data, round.id);
+  if (round.format === "individual" && teams.length === 2) {
+    const rankedA = rankedTeamMembers(data, round, teams[0].id);
+    const rankedB = rankedTeamMembers(data, round, teams[1].id);
+    if (rankedA.length !== 4 || rankedB.length !== 4) {
+      return { round, status: "not-set-up", winnerLabel: null, tied: false, perPlayer };
+    }
+    const singles = computeSinglesMatch(data, round, teams[0].id, teams[1].id);
+    if (!singles) {
+      return { round, status: "not-set-up", winnerLabel: null, tied: false, perPlayer };
+    }
+    if (!singles.complete) {
+      return { round, status: "in-progress", winnerLabel: null, tied: false, perPlayer };
+    }
+    const membersA = rankedA.map((p) => p.id);
+    const membersB = rankedB.map((p) => p.id);
+    if (singles.totalA === singles.totalB) {
+      for (const id of [...membersA, ...membersB]) perPlayer[id] = tie;
+      return { round, status: "final", winnerLabel: null, tied: true, perPlayer };
+    }
+    const winners = singles.totalA > singles.totalB ? membersA : membersB;
+    const winnerName = singles.totalA > singles.totalB ? teams[0].name : teams[1].name;
+    for (const id of winners) perPlayer[id] = win;
+    return { round, status: "final", winnerLabel: winnerName, tied: false, perPlayer };
+  }
+
   const groups = data.groups
     .filter((g) => g.round_id === round.id)
     .sort((a, b) => a.sort_order - b.sort_order);
-  const { win, tie } = payoutAmountsFor(data, round);
-  const perPlayer: Record<string, number> = {};
 
   if (groups.length !== 2) {
     return { round, status: "not-set-up", winnerLabel: null, tied: false, perPlayer };
@@ -104,6 +136,8 @@ export default function MoneyPage() {
       "rounds",
       "groups",
       "group_members",
+      "teams",
+      "team_members",
       "hole_scores",
       "scramble_scores",
       "round_handicaps",

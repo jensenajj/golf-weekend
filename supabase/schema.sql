@@ -39,6 +39,27 @@ create table if not exists group_members (
   primary key (group_id, player_id)
 );
 
+-- Independent of groups/carts (which represent on-course physical
+-- foursomes/pairs). Teams represent who's competing against whom for a
+-- round's singles match play format (see lib/singlesMatch.ts) -- e.g. for
+-- Saturday AM, the A/B/C/D-ranked players are drawn from teams, but then
+-- physically ride/play in groups/carts arranged across both teams (A+B
+-- together, C+D together). A round is treated as singles format by the app
+-- whenever it has exactly 2 teams with 4 members each; otherwise it falls
+-- back to the group-vs-group best-ball format.
+create table if not exists teams (
+  id uuid primary key default gen_random_uuid(),
+  round_id uuid not null references rounds(id) on delete cascade,
+  name text not null,
+  sort_order int not null default 0
+);
+
+create table if not exists team_members (
+  team_id uuid not null references teams(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  primary key (team_id, player_id)
+);
+
 -- Carts subdivide a group (e.g. a foursome) into pairs for cart-vs-cart games.
 create table if not exists carts (
   id uuid primary key default gen_random_uuid(),
@@ -158,6 +179,8 @@ alter table groups enable row level security;
 alter table group_members enable row level security;
 alter table carts enable row level security;
 alter table cart_members enable row level security;
+alter table teams enable row level security;
+alter table team_members enable row level security;
 alter table hole_scores enable row level security;
 alter table scramble_scores enable row level security;
 alter table round_handicaps enable row level security;
@@ -181,6 +204,12 @@ create policy "public_all_carts" on carts for all using (true) with check (true)
 
 drop policy if exists "public_all_cart_members" on cart_members;
 create policy "public_all_cart_members" on cart_members for all using (true) with check (true);
+
+drop policy if exists "public_all_teams" on teams;
+create policy "public_all_teams" on teams for all using (true) with check (true);
+
+drop policy if exists "public_all_team_members" on team_members;
+create policy "public_all_team_members" on team_members for all using (true) with check (true);
 
 drop policy if exists "public_all_hole_scores" on hole_scores;
 create policy "public_all_hole_scores" on hole_scores for all using (true) with check (true);

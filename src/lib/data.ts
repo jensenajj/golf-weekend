@@ -11,6 +11,8 @@ import {
   RoundHandicap,
   RoundPayout,
   ScrambleScore,
+  Team,
+  TeamMember,
 } from "./types";
 
 export type FullData = {
@@ -20,6 +22,8 @@ export type FullData = {
   groupMembers: GroupMember[];
   carts: Cart[];
   cartMembers: CartMember[];
+  teams: Team[];
+  teamMembers: TeamMember[];
   holeScores: HoleScore[];
   scrambleScores: ScrambleScore[];
   roundHandicaps: RoundHandicap[];
@@ -34,6 +38,8 @@ const EMPTY: FullData = {
   groupMembers: [],
   carts: [],
   cartMembers: [],
+  teams: [],
+  teamMembers: [],
   holeScores: [],
   scrambleScores: [],
   roundHandicaps: [],
@@ -50,6 +56,8 @@ export async function fetchAll(): Promise<FullData> {
       groupMembers,
       carts,
       cartMembers,
+      teams,
+      teamMembers,
       holeScores,
       scrambleScores,
       roundHandicaps,
@@ -62,6 +70,8 @@ export async function fetchAll(): Promise<FullData> {
       supabase.from("group_members").select("*"),
       supabase.from("carts").select("*").order("sort_order"),
       supabase.from("cart_members").select("*"),
+      supabase.from("teams").select("*").order("sort_order"),
+      supabase.from("team_members").select("*"),
       supabase.from("hole_scores").select("*"),
       supabase.from("scramble_scores").select("*"),
       supabase.from("round_handicaps").select("*"),
@@ -76,6 +86,8 @@ export async function fetchAll(): Promise<FullData> {
       groupMembers: groupMembers.data ?? [],
       carts: carts.data ?? [],
       cartMembers: cartMembers.data ?? [],
+      teams: teams.data ?? [],
+      teamMembers: teamMembers.data ?? [],
       holeScores: holeScores.data ?? [],
       scrambleScores: scrambleScores.data ?? [],
       roundHandicaps: roundHandicaps.data ?? [],

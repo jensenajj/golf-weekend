@@ -44,6 +44,18 @@ export type CartMember = {
   player_id: string;
 };
 
+export type Team = {
+  id: string;
+  round_id: string;
+  name: string;
+  sort_order: number;
+};
+
+export type TeamMember = {
+  team_id: string;
+  player_id: string;
+};
+
 export type HoleScore = {
   id: string;
   round_id: string;
