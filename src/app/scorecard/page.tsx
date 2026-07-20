@@ -852,6 +852,13 @@ export default function ScorecardPage() {
                                 title={won ? "Won the skin on this hole" : undefined}
                               >
                                 <div className="flex flex-col items-center gap-0.5 leading-none">
+                                  <span
+                                    className={`text-[11px] leading-none tracking-widest text-neutral-400 ${
+                                      strokes > 0 ? "" : "invisible"
+                                    }`}
+                                  >
+                                    {"•".repeat(strokes || 1)}
+                                  </span>
                                   <ScoreMark mark={mark}>
                                     {canEdit ? (
                                       <input
@@ -864,11 +871,6 @@ export default function ScorecardPage() {
                                       (val ?? "–")
                                     )}
                                   </ScoreMark>
-                                  {strokes > 0 && (
-                                    <span className="text-[11px] leading-none tracking-widest text-neutral-400">
-                                      {"•".repeat(strokes)}
-                                    </span>
-                                  )}
                                 </div>
                               </td>
                             );
@@ -889,6 +891,13 @@ export default function ScorecardPage() {
                                 title={won ? "Won the skin on this hole" : undefined}
                               >
                                 <div className="flex flex-col items-center gap-0.5 leading-none">
+                                  <span
+                                    className={`text-[11px] leading-none tracking-widest text-neutral-400 ${
+                                      strokes > 0 ? "" : "invisible"
+                                    }`}
+                                  >
+                                    {"•".repeat(strokes || 1)}
+                                  </span>
                                   <ScoreMark mark={mark}>
                                     {canEdit ? (
                                       <input
@@ -901,11 +910,6 @@ export default function ScorecardPage() {
                                       (val ?? "–")
                                     )}
                                   </ScoreMark>
-                                  {strokes > 0 && (
-                                    <span className="text-[11px] leading-none tracking-widest text-neutral-400">
-                                      {"•".repeat(strokes)}
-                                    </span>
-                                  )}
                                 </div>
                               </td>
                             );
