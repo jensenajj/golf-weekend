@@ -5,55 +5,42 @@ import { fetchAll, FullData } from "@/lib/data";
 import { grossTotal, netScore } from "@/lib/scoring";
 import { effectiveHandicap } from "@/lib/handicap";
 import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
-import { computeAllSkins } from "@/lib/skins";
+import { computePlayerTotals } from "@/lib/payouts";
 import { COURSES } from "@/lib/courseData";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { Player, Round } from "@/lib/types";
 
-type ScoreMode = "net" | "gross";
-
 type PlayerLine = {
   player: Player;
-  perRound: Record<string, { gross: number; holes: number; net: number; handicap: number } | null>;
   totalNet: number;
-  totalGross: number;
   roundsStarted: number;
 };
 
-function buildLeaderboard(data: FullData, mode: ScoreMode): PlayerLine[] {
+function buildLeaderboard(data: FullData): PlayerLine[] {
   const individualRounds = data.rounds.filter((r) => r.format === "individual");
 
   return data.players
     .map((player) => {
-      const perRound: PlayerLine["perRound"] = {};
       let totalNet = 0;
-      let totalGross = 0;
       let roundsStarted = 0;
 
       for (const round of individualRounds) {
         const scores = data.holeScores.filter(
           (s) => s.round_id === round.id && s.player_id === player.id
         );
-        if (scores.length === 0) {
-          perRound[round.id] = null;
-          continue;
-        }
+        if (scores.length === 0) continue;
         const handicap = effectiveHandicap(player.id, player.handicap, round.id, data.roundHandicaps);
-        const gross = grossTotal(scores);
-        const net = netScore(gross, handicap);
-        perRound[round.id] = { gross, holes: scores.length, net, handicap };
-        totalNet += net;
-        totalGross += gross;
+        totalNet += netScore(grossTotal(scores), handicap);
         roundsStarted += 1;
       }
 
-      return { player, perRound, totalNet, totalGross, roundsStarted };
+      return { player, totalNet, roundsStarted };
     })
     .sort((a, b) => {
       if (a.roundsStarted === 0 && b.roundsStarted === 0) return 0;
       if (a.roundsStarted === 0) return 1;
       if (b.roundsStarted === 0) return -1;
-      return mode === "net" ? a.totalNet - b.totalNet : a.totalGross - b.totalGross;
+      return a.totalNet - b.totalNet;
     });
 }
 
@@ -73,7 +60,6 @@ function RoundBadge({ round }: { round: Round }) {
 
 export default function DashboardPage() {
   const [data, setData] = useState<FullData | null>(null);
-  const [mode, setMode] = useState<ScoreMode>("net");
 
   const load = useCallback(() => {
     fetchAll().then(setData);
@@ -84,7 +70,18 @@ export default function DashboardPage() {
   }, [load]);
 
   useRealtimeRefresh(
-    ["hole_scores", "scramble_scores", "players", "groups", "group_members", "round_handicaps"],
+    [
+      "hole_scores",
+      "scramble_scores",
+      "players",
+      "groups",
+      "group_members",
+      "teams",
+      "team_members",
+      "round_handicaps",
+      "round_payouts",
+      "money_settings",
+    ],
     load
   );
 
@@ -103,135 +100,68 @@ export default function DashboardPage() {
     );
   }
 
-  const leaderboard = buildLeaderboard(data, mode);
-  const individualRounds = data.rounds.filter((r) => r.format === "individual");
-  const skins = computeAllSkins(data);
-  const skinsLeaders = data.players
-    .map((p) => ({ player: p, count: skins.skinsByPlayer[p.id] ?? 0 }))
-    .filter((s) => s.count > 0)
-    .sort((a, b) => b.count - a.count);
+  const leaderboard = buildLeaderboard(data);
+  const playerTotals = computePlayerTotals(data);
+  const formatMoney = (v: number) => (Number.isInteger(v) ? `${v}` : v.toFixed(2));
 
   return (
     <div className="space-y-8">
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-            Leaderboard
-          </h2>
-          <div className="flex gap-1 rounded-full bg-neutral-800 p-0.5">
-            {(["net", "gross"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
-                  mode === m
-                    ? "bg-emerald-600 text-white"
-                    : "text-neutral-400"
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Leaderboard
+        </h2>
         <div className="overflow-x-auto rounded-xl border border-neutral-800">
           <table className="w-full min-w-[420px] text-sm">
             <thead className="bg-neutral-900 text-neutral-400">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Player</th>
                 <th className="px-3 py-2 text-right font-medium">Hcp</th>
-                {individualRounds.map((r) => (
-                  <th key={r.id} className="px-3 py-2 text-right font-medium">
-                    {r.day.slice(0, 3)} {r.session}
-                  </th>
-                ))}
-                <th className="px-3 py-2 text-right font-medium capitalize">
-                  Total {mode}
-                </th>
+                <th className="px-3 py-2 text-right font-medium">$$$</th>
+                <th className="px-3 py-2 text-right font-medium">Skins</th>
+                <th className="px-3 py-2 text-right font-medium">Total Net</th>
               </tr>
             </thead>
             <tbody>
-              {leaderboard.map(({ player, perRound, totalNet, totalGross, roundsStarted }, i) => (
-                <tr
-                  key={player.id}
-                  className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
-                >
-                  <td className="px-3 py-2 font-medium">{player.name}</td>
-                  <td className="px-3 py-2 text-right text-neutral-400">
-                    {player.handicap}
-                  </td>
-                  {individualRounds.map((r) => {
-                    const cell = perRound[r.id];
-                    return (
-                      <td key={r.id} className="px-3 py-2 text-right text-neutral-300">
-                        {cell ? (
-                          <span
-                            title={`${cell.holes}/18 holes, gross ${cell.gross}, net ${cell.net}, hcp used ${cell.handicap}`}
-                          >
-                            {mode === "net" ? cell.net : cell.gross}
-                            {cell.holes < 18 && (
-                              <span className="text-neutral-500">*</span>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="text-neutral-600">–</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                  <td className="px-3 py-2 text-right font-semibold">
-                    {roundsStarted > 0 ? (mode === "net" ? totalNet : totalGross) : "–"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="mt-2 text-xs text-neutral-500">
-          Net = gross strokes − handicap, applied per round. * = round in progress (fewer than 18
-          holes entered). The Hcp column is each player&apos;s current handicap — once a round
-          starts, that round locks in whatever handicap was set at the time (hover a score to see
-          it), so later handicap changes only affect rounds that haven&apos;t started yet.
-        </p>
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
-          Skins
-        </h2>
-        {skinsLeaders.length === 0 ? (
-          <p className="text-sm text-neutral-500">
-            No skins won yet — a skin goes to whoever posts the lowest net score on a hole,
-            once everyone in that round has entered it. Ties push (no skin).
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-neutral-800">
-            <table className="w-full min-w-[280px] text-sm">
-              <thead className="bg-neutral-900 text-neutral-400">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">Player</th>
-                  <th className="px-3 py-2 text-right font-medium">Skins</th>
-                </tr>
-              </thead>
-              <tbody>
-                {skinsLeaders.map(({ player, count }, i) => (
+              {leaderboard.map(({ player, totalNet, roundsStarted }, i) => {
+                const totals = playerTotals.find((t) => t.player.id === player.id);
+                return (
                   <tr
                     key={player.id}
                     className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
                   >
                     <td className="px-3 py-2 font-medium">{player.name}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-emerald-400">
-                      {count}
+                    <td className="px-3 py-2 text-right text-neutral-400">
+                      {player.handicap}
+                    </td>
+                    <td className="px-3 py-2 text-right text-emerald-400">
+                      {totals && totals.total > 0 ? (
+                        `$${formatMoney(totals.total)}`
+                      ) : (
+                        <span className="text-neutral-600">–</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-neutral-300">
+                      {totals && totals.skinsCount > 0 ? (
+                        totals.skinsCount
+                      ) : (
+                        <span className="text-neutral-600">–</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold">
+                      {roundsStarted > 0 ? totalNet : "–"}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <p className="mt-2 text-xs text-neutral-500">
-          {skins.totalSkins} skin{skins.totalSkins === 1 ? "" : "s"} won so far across Friday
-          AM, Saturday AM, and Sunday AM combined. Dollar value per skin is on the Money tab.
+          $$$ is total winnings so far (round wins/ties, low net, skins, and champ combined —
+          full breakdown on the Money tab). Total Net = gross strokes − handicap, summed across
+          Friday AM, Saturday AM, and Sunday AM. The Hcp column is each player&apos;s current
+          handicap — once a round starts, that round locks in whatever handicap was set at the
+          time, so later handicap changes only affect rounds that haven&apos;t started yet.
         </p>
       </section>
 
