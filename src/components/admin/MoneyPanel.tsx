@@ -43,6 +43,13 @@ export function MoneyPanel() {
     load();
   }
 
+  async function setChampPrize(value: string) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return;
+    await supabase.from("money_settings").upsert({ id: "default", champ_prize: num });
+    load();
+  }
+
   async function setAmount(
     round: Round,
     field: "win_amount" | "low_net_amount",
@@ -64,6 +71,7 @@ export function MoneyPanel() {
 
   const totalPot = settings?.total_pot ?? 800;
   const skinsPot = settings?.skins_pot ?? 100;
+  const champPrize = settings?.champ_prize ?? 60;
 
   return (
     <div className="space-y-4">
@@ -104,13 +112,35 @@ export function MoneyPanel() {
         </label>
       </div>
 
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3">
+        <label className="flex items-center justify-between text-sm">
+          <span className="font-medium">
+            Champ prize
+            <span className="ml-2 block text-xs font-normal text-neutral-500 sm:inline">
+              To whoever&apos;s net total is lowest across Friday, Saturday, and Sunday AM
+              combined
+            </span>
+          </span>
+          <span className="flex items-center gap-1">
+            $
+            <input
+              key={champPrize}
+              defaultValue={champPrize}
+              onBlur={(e) => setChampPrize(e.target.value)}
+              inputMode="decimal"
+              className="w-20 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-center"
+            />
+          </span>
+        </label>
+      </div>
+
       <p className="text-xs text-neutral-500">
         Win amount pays each player on the winning side (winning group for AM rounds, winning
         team for scrambles) — individual AM rounds default to $20/$30/$40 for Friday/Saturday/
         Sunday, scrambles default to $20. Tie always pays half the win amount to every player
         involved (all 8) instead, so it&apos;s not separately editable. Low Net (individual
-        rounds only) pays whoever&apos;s 18-hole net total is lowest across the full field,
-        split evenly on a tie.
+        rounds only) pays whoever&apos;s 18-hole net total is lowest across the full field for
+        that round, split evenly on a tie.
       </p>
 
       <div className="space-y-2">

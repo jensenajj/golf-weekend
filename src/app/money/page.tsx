@@ -7,7 +7,7 @@ import { COURSES } from "@/lib/courseData";
 import { allHolesEntered, bestBallByHole, scoreMatch } from "@/lib/matchplay";
 import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
-import { computeLowNet } from "@/lib/lowNet";
+import { computeLowNet, computeWeekendLowNet } from "@/lib/lowNet";
 import { defaultWinAmount, tieAmountFor } from "@/lib/money";
 import { Round } from "@/lib/types";
 
@@ -121,21 +121,25 @@ export default function MoneyPage() {
 
   const totalPot = data.moneySettings?.total_pot ?? 800;
   const skinsPot = data.moneySettings?.skins_pot ?? 100;
+  const champPrize = data.moneySettings?.champ_prize ?? 60;
   const results = data.rounds.map((r) => computeRoundPayout(data, r));
   const skins = computeAllSkins(data);
   const skinValue = skins.totalSkins > 0 ? skinsPot / skins.totalSkins : 0;
   const skinsPaidOut = skins.totalSkins > 0 ? skinsPot : 0;
   const lowNetResults = computeLowNet(data);
+  const weekendLowNet = computeWeekendLowNet(data);
 
   const lowNetPaidOut = lowNetResults.reduce((sum, r) => {
     if (!r.complete || r.winnerIds.length === 0) return sum;
     return sum + payoutAmountsFor(data, r.round).lowNetPrize;
   }, 0);
+  const champPaidOut = weekendLowNet.complete ? champPrize : 0;
 
   const paidOut =
     results.reduce((sum, r) => sum + Object.values(r.perPlayer).reduce((s, v) => s + v, 0), 0) +
     skinsPaidOut +
-    lowNetPaidOut;
+    lowNetPaidOut +
+    champPaidOut;
   const remaining = totalPot - paidOut;
 
   const playerTotals = data.players
@@ -143,19 +147,25 @@ export default function MoneyPage() {
       const perRound: Record<string, number> = {};
       let total = 0;
       for (const r of results) {
-        const amount = r.perPlayer[p.id] ?? 0;
+        const matchAmount = r.perPlayer[p.id] ?? 0;
+        const lnr = lowNetResults.find((x) => x.round.id === r.round.id);
+        const roundLowNetAmount =
+          lnr?.complete && lnr.winnerIds.includes(p.id)
+            ? payoutAmountsFor(data, r.round).lowNetPrize / lnr.winnerIds.length
+            : 0;
+        const amount = matchAmount + roundLowNetAmount;
         perRound[r.round.id] = amount;
         total += amount;
       }
       const skinsCount = skins.skinsByPlayer[p.id] ?? 0;
       const skinsAmount = skinsCount * skinValue;
       total += skinsAmount;
-      const lowNetAmount = lowNetResults.reduce((sum, r) => {
-        if (!r.complete || !r.winnerIds.includes(p.id)) return sum;
-        return sum + payoutAmountsFor(data, r.round).lowNetPrize / r.winnerIds.length;
-      }, 0);
-      total += lowNetAmount;
-      return { player: p, perRound, skinsCount, skinsAmount, lowNetAmount, total };
+      const champAmount =
+        weekendLowNet.complete && weekendLowNet.championIds.includes(p.id)
+          ? champPrize / weekendLowNet.championIds.length
+          : 0;
+      total += champAmount;
+      return { player: p, perRound, skinsCount, skinsAmount, champAmount, total };
     })
     .sort((a, b) => b.total - a.total);
 
@@ -191,13 +201,13 @@ export default function MoneyPage() {
                   </th>
                 ))}
                 <th className="px-3 py-2 text-right font-medium">Skins</th>
-                <th className="px-3 py-2 text-right font-medium">Low Net</th>
+                <th className="px-3 py-2 text-right font-medium">Champ</th>
                 <th className="px-3 py-2 text-right font-medium">Total</th>
               </tr>
             </thead>
             <tbody>
               {playerTotals.map(
-                ({ player, perRound, skinsCount, skinsAmount, lowNetAmount, total }, i) => (
+                ({ player, perRound, skinsCount, skinsAmount, champAmount, total }, i) => (
                   <tr
                     key={player.id}
                     className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
@@ -220,8 +230,8 @@ export default function MoneyPage() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right text-neutral-300">
-                      {lowNetAmount > 0 ? (
-                        `$${formatMoney(lowNetAmount)}`
+                      {champAmount > 0 ? (
+                        `$${formatMoney(champAmount)}`
                       ) : (
                         <span className="text-neutral-600">–</span>
                       )}
@@ -319,7 +329,47 @@ export default function MoneyPage() {
         <p className="mt-2 text-xs text-neutral-500">
           Whoever&apos;s 18-hole net total is lowest across the full field (both groups) for
           that round wins — only counts once every player in the round has entered all 18
-          holes. A tie splits the prize evenly among the tied players.
+          holes. A tie splits the prize evenly among the tied players. These amounts show up
+          folded into that round&apos;s own column in the Winnings table above, not as a
+          separate column.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Champ
+        </h2>
+        <div className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-sm">
+          <span className="font-medium">
+            Weekend Low Net
+            <span className="ml-2 text-xs font-normal text-neutral-500">
+              ${champPrize} to the lowest combined net across Friday, Saturday, and Sunday AM
+            </span>
+          </span>
+          {!weekendLowNet.complete ? (
+            <span className="text-amber-400">In progress</span>
+          ) : weekendLowNet.championIds.length > 1 ? (
+            <span className="text-emerald-400">
+              {weekendLowNet.championIds
+                .map((id) => data.players.find((p) => p.id === id)?.name)
+                .filter(Boolean)
+                .join(", ")}{" "}
+              tie at {weekendLowNet.total} — ${formatMoney(
+                champPrize / weekendLowNet.championIds.length
+              )}{" "}
+              each
+            </span>
+          ) : (
+            <span className="text-emerald-400">
+              {data.players.find((p) => p.id === weekendLowNet.championIds[0])?.name} wins at{" "}
+              {weekendLowNet.total}
+            </span>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-neutral-500">
+          The weekend&apos;s low net champion — net totals from Friday AM, Saturday AM, and
+          Sunday AM added together, lowest wins. Only decided once all three individual rounds
+          are complete. Separate from each round&apos;s own Low Net prize above.
         </p>
       </section>
 

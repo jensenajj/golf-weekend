@@ -9,6 +9,7 @@ export type LowNetResult = {
   complete: boolean; // every field player has all 18 holes in
   lowNet: number | null;
   winnerIds: string[]; // more than one on a tie, split the prize
+  netTotals: Record<string, number>; // empty unless complete
 };
 
 // Low Net is decided per individual (non-scramble) round, across the full
@@ -24,7 +25,7 @@ export function computeLowNet(data: FullData): LowNetResult[] {
     const fieldIds = roundFieldPlayerIds(data, round.id);
 
     if (!course || !hasHandicapData || fieldIds.length === 0) {
-      return { round, complete: false, lowNet: null, winnerIds: [] };
+      return { round, complete: false, lowNet: null, winnerIds: [], netTotals: {} };
     }
 
     const netTotals: Record<string, number> = {};
@@ -33,7 +34,7 @@ export function computeLowNet(data: FullData): LowNetResult[] {
         (s) => s.round_id === round.id && s.player_id === playerId
       );
       if (scores.length !== 18) {
-        return { round, complete: false, lowNet: null, winnerIds: [] };
+        return { round, complete: false, lowNet: null, winnerIds: [], netTotals: {} };
       }
       const player = data.players.find((p) => p.id === playerId);
       if (!player) continue;
@@ -48,13 +49,48 @@ export function computeLowNet(data: FullData): LowNetResult[] {
 
     const values = Object.values(netTotals);
     if (values.length === 0) {
-      return { round, complete: false, lowNet: null, winnerIds: [] };
+      return { round, complete: false, lowNet: null, winnerIds: [], netTotals: {} };
     }
     const lowNet = Math.min(...values);
     const winnerIds = Object.entries(netTotals)
       .filter(([, net]) => net === lowNet)
       .map(([id]) => id);
 
-    return { round, complete: true, lowNet, winnerIds };
+    return { round, complete: true, lowNet, winnerIds, netTotals };
   });
+}
+
+export type WeekendLowNetResult = {
+  complete: boolean; // every individual round is complete
+  total: number | null; // the winning combined net total
+  championIds: string[]; // more than one on a tie, split the prize
+};
+
+// The weekend-long "Champ" prize: whoever's net total, summed across all
+// three individual rounds (Friday/Saturday/Sunday AM), is lowest. Only
+// decided once every individual round is complete -- a round still in
+// progress means the weekend total isn't final yet either.
+export function computeWeekendLowNet(data: FullData): WeekendLowNetResult {
+  const results = computeLowNet(data);
+  if (results.length === 0 || results.some((r) => !r.complete)) {
+    return { complete: false, total: null, championIds: [] };
+  }
+
+  const totals: Record<string, number> = {};
+  for (const r of results) {
+    for (const [playerId, net] of Object.entries(r.netTotals)) {
+      totals[playerId] = (totals[playerId] ?? 0) + net;
+    }
+  }
+
+  const values = Object.values(totals);
+  if (values.length === 0) {
+    return { complete: false, total: null, championIds: [] };
+  }
+  const total = Math.min(...values);
+  const championIds = Object.entries(totals)
+    .filter(([, v]) => v === total)
+    .map(([id]) => id);
+
+  return { complete: true, total, championIds };
 }
