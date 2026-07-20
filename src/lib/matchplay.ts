@@ -6,6 +6,7 @@ import { HOLES, Round } from "./types";
 export type MatchSide = {
   label: string;
   byHole: (number | null)[]; // index 0 = hole 1
+  labelClassName?: string; // e.g. a team color, applied to the row label
 };
 
 export type MatchResult = {

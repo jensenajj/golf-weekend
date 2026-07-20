@@ -67,7 +67,9 @@ function MatchTable({ a, b }: { a: MatchSide; b: MatchSide }) {
         <tbody>
           {[a, b].map((side, idx) => (
             <tr key={side.label} className="border-t border-neutral-800">
-              <td className="px-2 py-1.5 text-left font-medium sticky left-0 bg-neutral-950">
+              <td
+                className={`px-2 py-1.5 text-left font-medium sticky left-0 bg-neutral-950 ${side.labelClassName ?? ""}`}
+              >
                 {side.label}
               </td>
               {side.byHole.map((v, i) => {
@@ -258,10 +260,12 @@ export default function GamesPage() {
                           a={{
                             label: `${rank}: ${rankedA[i].name}`,
                             byHole: HOLES.map((h) => netFor(data, round, course, rankedA[i].id, h)),
+                            labelClassName: teamColor("A"),
                           }}
                           b={{
                             label: `${rank}: ${rankedB[i].name}`,
                             byHole: HOLES.map((h) => netFor(data, round, course, rankedB[i].id, h)),
+                            labelClassName: teamColor("B"),
                           }}
                         />
                       ))}
@@ -327,22 +331,26 @@ export default function GamesPage() {
                     <div className="space-y-3">
                       <MatchTable
                         a={{
-                          label: `Group 1: ${teamA.name}`,
+                          label: memberNames(data, a1).join(", "),
                           byHole: bestBallByHole(data, round, course, a1, 1),
+                          labelClassName: teamColor("A"),
                         }}
                         b={{
-                          label: `Group 1: ${teamB.name}`,
+                          label: memberNames(data, b1).join(", "),
                           byHole: bestBallByHole(data, round, course, b1, 1),
+                          labelClassName: teamColor("B"),
                         }}
                       />
                       <MatchTable
                         a={{
-                          label: `Group 2: ${teamA.name}`,
+                          label: memberNames(data, a2).join(", "),
                           byHole: bestBallByHole(data, round, course, a2, 1),
+                          labelClassName: teamColor("A"),
                         }}
                         b={{
-                          label: `Group 2: ${teamB.name}`,
+                          label: memberNames(data, b2).join(", "),
                           byHole: bestBallByHole(data, round, course, b2, 1),
+                          labelClassName: teamColor("B"),
                         }}
                       />
                     </div>
