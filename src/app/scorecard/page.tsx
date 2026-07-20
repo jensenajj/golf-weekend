@@ -8,8 +8,19 @@ import { COURSES, DEFAULT_TEE, TeeName, hasHandicapData } from "@/lib/courseData
 import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@/lib/handicap";
 import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
+import { roundTeams } from "@/lib/singlesMatch";
 import { usePlayers } from "@/components/PlayerProvider";
 import { Group, HOLES, Player } from "@/lib/types";
+
+type Side = "A" | "B" | null;
+
+// Team A always reads blue, Team B always reads red -- same convention as
+// the Games tab, so which side someone's on reads consistently everywhere.
+function sideColor(side: Side): string {
+  if (side === "A") return "text-sky-400";
+  if (side === "B") return "text-red-400";
+  return "";
+}
 
 const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const BACK = [10, 11, 12, 13, 14, 15, 16, 17, 18];
@@ -87,7 +98,7 @@ function cellKey(roundId: string, playerId: string, hole: number) {
   return `${roundId}:${playerId}:${hole}`;
 }
 
-type HoleEntryRow = { id: string; label: string };
+type HoleEntryRow = { id: string; label: string; labelClassName?: string };
 
 function HoleEntryModal({
   title,
@@ -187,7 +198,7 @@ function HoleEntryModal({
               className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 px-4 py-3"
             >
               <div>
-                <p className="font-medium">{r.label}</p>
+                <p className={`font-medium ${r.labelClassName ?? ""}`}>{r.label}</p>
                 {diff != null && (
                   <p className="text-xs text-neutral-500">
                     {diff === 0 ? "Par" : diff > 0 ? `+${diff}` : diff}
@@ -286,6 +297,30 @@ export default function ScorecardPage() {
         .sort((a, b) => a.sort_order - b.sort_order)
     : [];
   const group = roundGroups.find((g) => g.id === groupId) ?? roundGroups[0] ?? null;
+  const teamsForRound = round ? roundTeams(data, round.id) : [];
+
+  // For singles/cart-pairs rounds, the on-course groups mix both teams
+  // together, so "side" comes from team membership instead. Otherwise
+  // (scramble, or a plain individual round) the two groups/teams ARE the
+  // two sides.
+  function groupSide(g: { id: string }): Side {
+    if (teamsForRound.length === 2) return null;
+    const idx = roundGroups.findIndex((rg) => rg.id === g.id);
+    return idx === 0 ? "A" : idx === 1 ? "B" : null;
+  }
+
+  function playerSide(playerId: string): Side {
+    if (teamsForRound.length === 2) {
+      if (data!.teamMembers.some((m) => m.team_id === teamsForRound[0].id && m.player_id === playerId)) {
+        return "A";
+      }
+      if (data!.teamMembers.some((m) => m.team_id === teamsForRound[1].id && m.player_id === playerId)) {
+        return "B";
+      }
+      return null;
+    }
+    return group ? groupSide(group) : null;
+  }
 
   const course = round?.course ? COURSES[round.course] : undefined;
   const tee = (course?.tees.includes(round?.tee as TeeName) ? round?.tee : DEFAULT_TEE) as
@@ -577,7 +612,7 @@ export default function ScorecardPage() {
                   className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium ${
                     group?.id === g.id
                       ? "bg-emerald-600 text-white"
-                      : "bg-neutral-800 text-neutral-300"
+                      : `bg-neutral-800 ${sideColor(groupSide(g)) || "text-neutral-300"}`
                   }`}
                 >
                   {g.name}
@@ -643,7 +678,7 @@ export default function ScorecardPage() {
                     key={g.id}
                     className="space-y-1.5 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3"
                   >
-                    <p className="font-medium">{g.name}</p>
+                    <p className={`font-medium ${sideColor(groupSide(g))}`}>{g.name}</p>
                     <p className="text-sm text-neutral-400">
                       {teamMembers.map((m) => m.name).join(", ") || "No players assigned"}
                     </p>
@@ -720,7 +755,11 @@ export default function ScorecardPage() {
           {course && holeEntryOpen && round.format === "individual" && group && (
             <HoleEntryModal
               title={`${round.label} · ${group.name}`}
-              rows={members.map((m) => ({ id: m.id, label: m.name }))}
+              rows={members.map((m) => ({
+                id: m.id,
+                label: m.name,
+                labelClassName: sideColor(playerSide(m.id)),
+              }))}
               holeInfo={holeInfo}
               getScore={(id, h) => strokesFor(id, h)}
               onSave={(id, h, v) => saveScore(id, h, String(v))}
@@ -733,7 +772,7 @@ export default function ScorecardPage() {
               title={round.label}
               rows={roundGroups
                 .filter((g) => canEditGroup(g))
-                .map((g) => ({ id: g.id, label: g.name }))}
+                .map((g) => ({ id: g.id, label: g.name, labelClassName: sideColor(groupSide(g)) }))}
               holeInfo={holeInfo}
               getScore={(id, h) => scrambleStrokesFor(data, id, h)}
               onSave={(id, h, v) => saveScrambleScore(id, h, String(v))}
@@ -825,7 +864,11 @@ export default function ScorecardPage() {
                       return (
                       <Fragment key={m.id}>
                         <tr className="border-t border-neutral-800">
-                          <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
+                          <td
+                            className={cellClass(
+                              `text-left sticky left-0 bg-neutral-950 font-medium ${sideColor(playerSide(m.id))}`
+                            )}
+                          >
                             {m.name}
                             <span
                               className="ml-1 font-normal text-neutral-500"
@@ -970,7 +1013,11 @@ export default function ScorecardPage() {
                       const canEditTeam = canEditGroup(g);
                       return (
                         <tr key={g.id} className="border-t border-neutral-800">
-                          <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
+                          <td
+                            className={cellClass(
+                              `text-left sticky left-0 bg-neutral-950 font-medium ${sideColor(groupSide(g))}`
+                            )}
+                          >
                             {g.name}
                           </td>
                           {FRONT.map((h) => {

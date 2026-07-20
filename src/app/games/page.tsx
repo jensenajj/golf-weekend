@@ -203,7 +203,7 @@ export default function GamesPage() {
                           : "border-neutral-800 bg-neutral-900/40"
                       }`}
                     >
-                      <p className="font-medium">{groupLabel(data, g)}</p>
+                      <p className={`font-medium ${teamColor(side)}`}>{groupLabel(data, g)}</p>
                       <p className="text-2xl font-semibold">{fmt(toPar)}</p>
                       <p className="text-xs text-neutral-500">Thru {holes}/18</p>
                     </div>
@@ -395,6 +395,7 @@ export default function GamesPage() {
                 <MatchTable
                   a={{
                     label: groupLabel(data, roundGroups[0]),
+                    labelClassName: teamColor("A"),
                     byHole: bestBallByHole(
                       data,
                       round,
@@ -407,6 +408,7 @@ export default function GamesPage() {
                   }}
                   b={{
                     label: groupLabel(data, roundGroups[1]),
+                    labelClassName: teamColor("B"),
                     byHole: bestBallByHole(
                       data,
                       round,
