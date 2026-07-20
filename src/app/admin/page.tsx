@@ -6,6 +6,7 @@ import { MatchupsPanel } from "@/components/admin/MatchupsPanel";
 import { ScoresPanel } from "@/components/admin/ScoresPanel";
 import { RoundHandicapsPanel } from "@/components/admin/RoundHandicapsPanel";
 import { MoneyPanel } from "@/components/admin/MoneyPanel";
+import { ResetPanel } from "@/components/admin/ResetPanel";
 
 const TABS = [
   { id: "players", label: "Players & Handicaps" },
@@ -13,6 +14,7 @@ const TABS = [
   { id: "scores", label: "Edit Scores" },
   { id: "round-handicaps", label: "Round Handicaps" },
   { id: "money", label: "Money" },
+  { id: "reset", label: "Reset" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -43,6 +45,7 @@ export default function AdminPage() {
       {tab === "scores" && <ScoresPanel />}
       {tab === "round-handicaps" && <RoundHandicapsPanel />}
       {tab === "money" && <MoneyPanel />}
+      {tab === "reset" && <ResetPanel />}
     </div>
   );
 }
