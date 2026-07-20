@@ -370,6 +370,7 @@ export default function ScorecardPage() {
     round?.format === "individual" && teamsForRound.length !== 2 && roundGroups.length === 2;
 
   const isSingles = round?.team_format === "singles";
+  const isCartPairs = round?.team_format === "cart_pairs";
 
   // Which rank (0 = A ... 3 = D) a player holds on their team, so the two
   // rank-mates riding in this physical group (one from each team) can be
@@ -449,6 +450,29 @@ export default function ScorecardPage() {
       })
       .join(" · ");
   }
+
+  function cartMemberIds(cartId: string): string[] {
+    return data!.cartMembers.filter((cm) => cm.cart_id === cartId).map((cm) => cm.player_id);
+  }
+
+  // The two carts riding in this physical group play best-net-ball-of-2
+  // match play against each other (same math as Games' Cart vs Cart
+  // section), scoped to just this group -- not summed with the other one.
+  const cartAByHole =
+    isCartPairs && groupCarts.length === 2
+      ? bestBallNetByHole(cartMemberIds(groupCarts[0].id), 1)
+      : [];
+  const cartBByHole =
+    isCartPairs && groupCarts.length === 2
+      ? bestBallNetByHole(cartMemberIds(groupCarts[1].id), 1)
+      : [];
+  const cartPairsMatch =
+    isCartPairs && groupCarts.length === 2
+      ? scoreMatch(
+          { label: groupCarts[0].name, byHole: cartAByHole },
+          { label: groupCarts[1].name, byHole: cartBByHole }
+        )
+      : null;
 
   function strokesFor(playerId: string, hole: number) {
     if (!round) return null;
@@ -593,12 +617,12 @@ export default function ScorecardPage() {
     return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
   }
 
-  // Best-2-net-balls-of-4 team score, per hole, for a plain "Group vs
-  // Group" round (Friday AM's format) — same math the Games tab's
-  // Group vs Group table already uses.
-  function teamNetByHole(ids: string[]): (number | null)[] {
+  // Best-N-net-balls team score, per hole -- n=2 for Friday AM's Group vs
+  // Group (4-player teams), n=1 for Sunday AM's Cart Pairs (2-player
+  // carts). Same math the Games tab uses for both.
+  function bestBallNetByHole(ids: string[], n: number): (number | null)[] {
     if (!round || !course) return [];
-    return bestBallByHole(data!, round, course, ids, 2);
+    return bestBallByHole(data!, round, course, ids, n);
   }
 
   function sumFromByHole(byHole: (number | null)[], holes: number[]) {
@@ -689,7 +713,7 @@ export default function ScorecardPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               {roundGroups.map((g) => {
                 const ids = membersOf(g).map((m) => m.id);
-                const { toPar, thru } = teamScoreToPar(teamNetByHole(ids), course, 2);
+                const { toPar, thru } = teamScoreToPar(bestBallNetByHole(ids, 2), course, 2);
                 return (
                   <div
                     key={g.id}
@@ -761,7 +785,27 @@ export default function ScorecardPage() {
           )}
 
           {round.format === "individual" && groupCarts.length > 0 && (
-            <p className="text-xs text-neutral-500">{cartLabel()}</p>
+            isCartPairs && groupCarts.length === 2 ? (
+              <p className="text-xs text-neutral-500">
+                {groupCarts.map((c, i) => {
+                  const side: Side = i === 0 ? "A" : "B";
+                  const names = cartMemberIds(c.id)
+                    .map((id) => data.players.find((p) => p.id === id)?.name)
+                    .filter(Boolean)
+                    .join(", ");
+                  const pts = i === 0 ? cartPairsMatch?.ptsA : cartPairsMatch?.ptsB;
+                  return (
+                    <span key={c.id}>
+                      {i > 0 && " · "}
+                      <span className={`font-medium ${sideColor(side)}`}>{c.name}</span>
+                      {pts != null && ` (${pts % 1 === 0 ? pts : pts.toFixed(1)} pts)`}: {names || "—"}
+                    </span>
+                  );
+                })}
+              </p>
+            ) : (
+              <p className="text-xs text-neutral-500">{cartLabel()}</p>
+            )
           )}
 
           {round.format === "scramble" && roundGroups.length > 0 && (
@@ -1115,12 +1159,47 @@ export default function ScorecardPage() {
                             </td>
                           </tr>
                         )}
+                        {isCartPairs && (idx === 1 || idx === 3) && (() => {
+                          const isFirstTeam = idx === 1;
+                          const byHole = isFirstTeam ? cartAByHole : cartBByHole;
+                          const side: Side = isFirstTeam ? "A" : "B";
+                          return (
+                            <tr className="border-t-2 border-neutral-700 bg-neutral-900/60">
+                              <td
+                                className={cellClass(
+                                  `text-left sticky left-0 whitespace-nowrap bg-neutral-900/60 font-semibold ${sideColor(side)}`
+                                )}
+                              >
+                                Team score
+                              </td>
+                              {FRONT.map((h) => (
+                                <td key={h} className={cellClass("font-semibold")}>
+                                  {byHole[h - 1] ?? "–"}
+                                </td>
+                              ))}
+                              <td className={cellClass("font-semibold")}>
+                                {sumFromByHole(byHole, FRONT) ?? "–"}
+                              </td>
+                              {BACK.map((h) => (
+                                <td key={h} className={cellClass("font-semibold")}>
+                                  {byHole[h - 1] ?? "–"}
+                                </td>
+                              ))}
+                              <td className={cellClass("font-semibold")}>
+                                {sumFromByHole(byHole, BACK) ?? "–"}
+                              </td>
+                              <td className={cellClass("font-semibold")}>
+                                {sumFromByHole(byHole, [...FRONT, ...BACK]) ?? "–"}
+                              </td>
+                            </tr>
+                          );
+                        })()}
                       </Fragment>
                       );
                     })}
 
                   {isTeamFormat && group && (() => {
-                    const byHole = teamNetByHole(memberIds);
+                    const byHole = bestBallNetByHole(memberIds, 2);
                     return (
                       <tr className="border-t-2 border-neutral-700 bg-neutral-900/60">
                         <td
