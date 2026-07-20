@@ -5,12 +5,14 @@ import { PlayersPanel } from "@/components/admin/PlayersPanel";
 import { MatchupsPanel } from "@/components/admin/MatchupsPanel";
 import { ScoresPanel } from "@/components/admin/ScoresPanel";
 import { RoundHandicapsPanel } from "@/components/admin/RoundHandicapsPanel";
+import { MoneyPanel } from "@/components/admin/MoneyPanel";
 
 const TABS = [
   { id: "players", label: "Players & Handicaps" },
   { id: "matchups", label: "Matchups" },
   { id: "scores", label: "Edit Scores" },
   { id: "round-handicaps", label: "Round Handicaps" },
+  { id: "money", label: "Money" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -40,6 +42,7 @@ export default function AdminPage() {
       {tab === "matchups" && <MatchupsPanel />}
       {tab === "scores" && <ScoresPanel />}
       {tab === "round-handicaps" && <RoundHandicapsPanel />}
+      {tab === "money" && <MoneyPanel />}
     </div>
   );
 }

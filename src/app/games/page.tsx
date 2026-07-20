@@ -4,42 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
-import { effectiveHandicap, strokesReceived } from "@/lib/handicap";
-
-const HOLES = Array.from({ length: 18 }, (_, i) => i + 1);
-
-type MatchSide = {
-  label: string;
-  byHole: (number | null)[]; // index 0 = hole 1
-};
-
-type MatchResult = {
-  ptsA: number;
-  ptsB: number;
-  holeWinners: ("A" | "B" | "T" | null)[];
-};
-
-function scoreMatch(a: MatchSide, b: MatchSide): MatchResult {
-  let ptsA = 0;
-  let ptsB = 0;
-  const holeWinners: ("A" | "B" | "T" | null)[] = HOLES.map((_, i) => {
-    const va = a.byHole[i];
-    const vb = b.byHole[i];
-    if (va == null || vb == null) return null;
-    if (va < vb) {
-      ptsA += 1;
-      return "A";
-    }
-    if (vb < va) {
-      ptsB += 1;
-      return "B";
-    }
-    ptsA += 0.5;
-    ptsB += 0.5;
-    return "T";
-  });
-  return { ptsA, ptsB, holeWinners };
-}
+import { MatchSide, bestBallByHole, scoreMatch } from "@/lib/matchplay";
+import { HOLES } from "@/lib/types";
 
 function MatchTable({ a, b }: { a: MatchSide; b: MatchSide }) {
   const result = scoreMatch(a, b);
@@ -120,33 +86,6 @@ export default function GamesPage() {
   const round = data.rounds.find((r) => r.id === roundId) ?? null;
   const course = round?.course ? COURSES[round.course] : undefined;
 
-  function holeHandicap(hole: number) {
-    return course?.holes.find((h) => h.hole === hole)?.handicap ?? null;
-  }
-
-  function netFor(playerId: string, hole: number): number | null {
-    if (!round) return null;
-    const row = data!.holeScores.find(
-      (s) => s.round_id === round.id && s.player_id === playerId && s.hole === hole
-    );
-    if (row == null) return null;
-    const player = data!.players.find((p) => p.id === playerId);
-    if (!player) return null;
-    const hcp = effectiveHandicap(player.id, player.handicap, round.id, data!.roundHandicaps);
-    return row.strokes - strokesReceived(hcp, holeHandicap(hole));
-  }
-
-  function bestBallByHole(playerIds: string[], n: number): (number | null)[] {
-    return HOLES.map((h) => {
-      const nets = playerIds
-        .map((id) => netFor(id, h))
-        .filter((v): v is number => v != null)
-        .sort((x, y) => x - y);
-      if (nets.length === 0) return null;
-      return nets.slice(0, n).reduce((sum, v) => sum + v, 0);
-    });
-  }
-
   const roundGroups = round
     ? data.groups.filter((g) => g.round_id === round.id).sort((a, b) => a.sort_order - b.sort_order)
     : [];
@@ -198,6 +137,9 @@ export default function GamesPage() {
                 a={{
                   label: roundGroups[0].name,
                   byHole: bestBallByHole(
+                    data,
+                    round,
+                    course,
                     data.groupMembers
                       .filter((m) => m.group_id === roundGroups[0].id)
                       .map((m) => m.player_id),
@@ -207,6 +149,9 @@ export default function GamesPage() {
                 b={{
                   label: roundGroups[1].name,
                   byHole: bestBallByHole(
+                    data,
+                    round,
+                    course,
                     data.groupMembers
                       .filter((m) => m.group_id === roundGroups[1].id)
                       .map((m) => m.player_id),
@@ -238,6 +183,9 @@ export default function GamesPage() {
                       a={{
                         label: groupCarts[0].name,
                         byHole: bestBallByHole(
+                          data,
+                          round,
+                          course,
                           data.cartMembers
                             .filter((m) => m.cart_id === groupCarts[0].id)
                             .map((m) => m.player_id),
@@ -247,6 +195,9 @@ export default function GamesPage() {
                       b={{
                         label: groupCarts[1].name,
                         byHole: bestBallByHole(
+                          data,
+                          round,
+                          course,
                           data.cartMembers
                             .filter((m) => m.cart_id === groupCarts[1].id)
                             .map((m) => m.player_id),

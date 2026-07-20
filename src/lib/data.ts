@@ -5,9 +5,11 @@ import {
   Group,
   GroupMember,
   HoleScore,
+  MoneySettings,
   Player,
   Round,
   RoundHandicap,
+  RoundPayout,
 } from "./types";
 
 export type FullData = {
@@ -19,6 +21,8 @@ export type FullData = {
   cartMembers: CartMember[];
   holeScores: HoleScore[];
   roundHandicaps: RoundHandicap[];
+  roundPayouts: RoundPayout[];
+  moneySettings: MoneySettings | null;
 };
 
 const EMPTY: FullData = {
@@ -30,21 +34,35 @@ const EMPTY: FullData = {
   cartMembers: [],
   holeScores: [],
   roundHandicaps: [],
+  roundPayouts: [],
+  moneySettings: null,
 };
 
 export async function fetchAll(): Promise<FullData> {
   try {
-    const [players, rounds, groups, groupMembers, carts, cartMembers, holeScores, roundHandicaps] =
-      await Promise.all([
-        supabase.from("players").select("*").order("name"),
-        supabase.from("rounds").select("*").order("sort_order"),
-        supabase.from("groups").select("*").order("sort_order"),
-        supabase.from("group_members").select("*"),
-        supabase.from("carts").select("*").order("sort_order"),
-        supabase.from("cart_members").select("*"),
-        supabase.from("hole_scores").select("*"),
-        supabase.from("round_handicaps").select("*"),
-      ]);
+    const [
+      players,
+      rounds,
+      groups,
+      groupMembers,
+      carts,
+      cartMembers,
+      holeScores,
+      roundHandicaps,
+      roundPayouts,
+      moneySettings,
+    ] = await Promise.all([
+      supabase.from("players").select("*").order("name"),
+      supabase.from("rounds").select("*").order("sort_order"),
+      supabase.from("groups").select("*").order("sort_order"),
+      supabase.from("group_members").select("*"),
+      supabase.from("carts").select("*").order("sort_order"),
+      supabase.from("cart_members").select("*"),
+      supabase.from("hole_scores").select("*"),
+      supabase.from("round_handicaps").select("*"),
+      supabase.from("round_payouts").select("*"),
+      supabase.from("money_settings").select("*").eq("id", "default").maybeSingle(),
+    ]);
 
     return {
       players: players.data ?? [],
@@ -55,6 +73,8 @@ export async function fetchAll(): Promise<FullData> {
       cartMembers: cartMembers.data ?? [],
       holeScores: holeScores.data ?? [],
       roundHandicaps: roundHandicaps.data ?? [],
+      roundPayouts: roundPayouts.data ?? [],
+      moneySettings: moneySettings.data ?? null,
     };
   } catch {
     return EMPTY;

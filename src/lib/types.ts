@@ -60,4 +60,15 @@ export type RoundHandicap = {
   locked_at: string;
 };
 
+export type RoundPayout = {
+  round_id: string;
+  win_amount: number;
+  tie_amount: number;
+};
+
+export type MoneySettings = {
+  id: string;
+  total_pot: number;
+};
+
 export const HOLES = Array.from({ length: 18 }, (_, i) => i + 1);

@@ -77,6 +77,22 @@ create table if not exists round_handicaps (
   primary key (round_id, player_id)
 );
 
+-- Per-round dollar amounts for the money pot. "win_amount" is paid to each
+-- player on the winning side (winning group for individual rounds, winning
+-- team for scrambles); "tie_amount" is paid to every player involved if
+-- that round's game ties instead. Missing row = defaults (20/10) in code.
+create table if not exists round_payouts (
+  round_id uuid primary key references rounds(id) on delete cascade,
+  win_amount numeric not null default 20,
+  tie_amount numeric not null default 10
+);
+
+-- Single-row settings table for the overall pot.
+create table if not exists money_settings (
+  id text primary key default 'default',
+  total_pot numeric not null default 800
+);
+
 -- Seed the fixed weekend schedule (safe to re-run).
 insert into rounds (label, day, session, format, course, sort_order)
 values
@@ -114,6 +130,8 @@ alter table carts enable row level security;
 alter table cart_members enable row level security;
 alter table hole_scores enable row level security;
 alter table round_handicaps enable row level security;
+alter table round_payouts enable row level security;
+alter table money_settings enable row level security;
 
 drop policy if exists "public_all_players" on players;
 create policy "public_all_players" on players for all using (true) with check (true);
@@ -138,3 +156,9 @@ create policy "public_all_hole_scores" on hole_scores for all using (true) with 
 
 drop policy if exists "public_all_round_handicaps" on round_handicaps;
 create policy "public_all_round_handicaps" on round_handicaps for all using (true) with check (true);
+
+drop policy if exists "public_all_round_payouts" on round_payouts;
+create policy "public_all_round_payouts" on round_payouts for all using (true) with check (true);
+
+drop policy if exists "public_all_money_settings" on money_settings;
+create policy "public_all_money_settings" on money_settings for all using (true) with check (true);
