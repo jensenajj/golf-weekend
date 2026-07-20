@@ -994,21 +994,23 @@ export default function ScorecardPage() {
                               `text-left sticky left-0 whitespace-nowrap bg-neutral-950 font-medium ${sideColor(playerSide(m.id))}`
                             )}
                           >
-                            {m.name}
-                            <span
-                              className="ml-1 font-normal text-neutral-500"
-                              title={
-                                locked
-                                  ? `Handicap locked at ${hcp} for this round`
-                                  : `Following current handicap (${hcp}) — locks once a score is entered`
-                              }
-                            >
-                              ({hcp})
-                            </span>
-                            {points != null && (
-                              <span className="ml-1.5 rounded-full bg-neutral-800 px-1.5 py-0.5 text-[11px] font-normal text-neutral-300">
-                                {points % 1 === 0 ? points : points.toFixed(1)} pts
+                            <div>
+                              {m.name}
+                              <span
+                                className="ml-1 font-normal text-neutral-500"
+                                title={
+                                  locked
+                                    ? `Handicap locked at ${hcp} for this round`
+                                    : `Following current handicap (${hcp}) — locks once a score is entered`
+                                }
+                              >
+                                ({hcp})
                               </span>
+                            </div>
+                            {points != null && (
+                              <div className="mt-0.5 inline-block rounded-full bg-neutral-800 px-1.5 py-0.5 text-[11px] font-normal text-neutral-300">
+                                {points % 1 === 0 ? points : points.toFixed(1)} pts
+                              </div>
                             )}
                           </td>
                           {FRONT.map((h) => {
