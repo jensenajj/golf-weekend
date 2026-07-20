@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
-import { strokesReceived } from "@/lib/handicap";
+import { effectiveHandicap, strokesReceived } from "@/lib/handicap";
 
 const HOLES = Array.from({ length: 18 }, (_, i) => i + 1);
 
@@ -111,7 +111,7 @@ export default function GamesPage() {
   }, [load]);
 
   useRealtimeRefresh(
-    ["rounds", "groups", "group_members", "carts", "cart_members", "hole_scores"],
+    ["rounds", "groups", "group_members", "carts", "cart_members", "hole_scores", "round_handicaps"],
     load
   );
 
@@ -132,7 +132,8 @@ export default function GamesPage() {
     if (row == null) return null;
     const player = data!.players.find((p) => p.id === playerId);
     if (!player) return null;
-    return row.strokes - strokesReceived(player.handicap, holeHandicap(hole));
+    const hcp = effectiveHandicap(player.id, player.handicap, round.id, data!.roundHandicaps);
+    return row.strokes - strokesReceived(hcp, holeHandicap(hole));
   }
 
   function bestBallByHole(playerIds: string[], n: number): (number | null)[] {

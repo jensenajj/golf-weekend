@@ -1,5 +1,14 @@
 import { supabase } from "./supabase";
-import { Cart, CartMember, Group, GroupMember, HoleScore, Player, Round } from "./types";
+import {
+  Cart,
+  CartMember,
+  Group,
+  GroupMember,
+  HoleScore,
+  Player,
+  Round,
+  RoundHandicap,
+} from "./types";
 
 export type FullData = {
   players: Player[];
@@ -9,6 +18,7 @@ export type FullData = {
   carts: Cart[];
   cartMembers: CartMember[];
   holeScores: HoleScore[];
+  roundHandicaps: RoundHandicap[];
 };
 
 const EMPTY: FullData = {
@@ -19,11 +29,12 @@ const EMPTY: FullData = {
   carts: [],
   cartMembers: [],
   holeScores: [],
+  roundHandicaps: [],
 };
 
 export async function fetchAll(): Promise<FullData> {
   try {
-    const [players, rounds, groups, groupMembers, carts, cartMembers, holeScores] =
+    const [players, rounds, groups, groupMembers, carts, cartMembers, holeScores, roundHandicaps] =
       await Promise.all([
         supabase.from("players").select("*").order("name"),
         supabase.from("rounds").select("*").order("sort_order"),
@@ -32,6 +43,7 @@ export async function fetchAll(): Promise<FullData> {
         supabase.from("carts").select("*").order("sort_order"),
         supabase.from("cart_members").select("*"),
         supabase.from("hole_scores").select("*"),
+        supabase.from("round_handicaps").select("*"),
       ]);
 
     return {
@@ -42,6 +54,7 @@ export async function fetchAll(): Promise<FullData> {
       carts: carts.data ?? [],
       cartMembers: cartMembers.data ?? [],
       holeScores: holeScores.data ?? [],
+      roundHandicaps: roundHandicaps.data ?? [],
     };
   } catch {
     return EMPTY;

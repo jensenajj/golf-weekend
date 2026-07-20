@@ -63,6 +63,20 @@ create table if not exists hole_scores (
   unique (round_id, player_id, hole)
 );
 
+-- A player's handicap "locked in" for one specific round. Auto-created with
+-- whatever players.handicap was at the moment of that player's first score
+-- entry in the round (see lib/handicap.ts), so later changes to a player's
+-- global handicap never retroactively change an already-played round's net
+-- scores. Can also be set/overridden directly (e.g. from Admin) before or
+-- after the round, independent of the global value and of other rounds.
+create table if not exists round_handicaps (
+  round_id uuid not null references rounds(id) on delete cascade,
+  player_id uuid not null references players(id) on delete cascade,
+  handicap numeric not null,
+  locked_at timestamptz not null default now(),
+  primary key (round_id, player_id)
+);
+
 -- Seed the fixed weekend schedule (safe to re-run).
 insert into rounds (label, day, session, format, course, sort_order)
 values
@@ -99,6 +113,7 @@ alter table group_members enable row level security;
 alter table carts enable row level security;
 alter table cart_members enable row level security;
 alter table hole_scores enable row level security;
+alter table round_handicaps enable row level security;
 
 drop policy if exists "public_all_players" on players;
 create policy "public_all_players" on players for all using (true) with check (true);
@@ -120,3 +135,6 @@ create policy "public_all_cart_members" on cart_members for all using (true) wit
 
 drop policy if exists "public_all_hole_scores" on hole_scores;
 create policy "public_all_hole_scores" on hole_scores for all using (true) with check (true);
+
+drop policy if exists "public_all_round_handicaps" on round_handicaps;
+create policy "public_all_round_handicaps" on round_handicaps for all using (true) with check (true);

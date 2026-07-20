@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { grossTotal, netScore } from "@/lib/scoring";
+import { effectiveHandicap } from "@/lib/handicap";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { Player, Round } from "@/lib/types";
 
@@ -10,7 +11,7 @@ type ScoreMode = "net" | "gross";
 
 type PlayerLine = {
   player: Player;
-  perRound: Record<string, { gross: number; holes: number; net: number } | null>;
+  perRound: Record<string, { gross: number; holes: number; net: number; handicap: number } | null>;
   totalNet: number;
   totalGross: number;
   roundsStarted: number;
@@ -34,9 +35,10 @@ function buildLeaderboard(data: FullData, mode: ScoreMode): PlayerLine[] {
           perRound[round.id] = null;
           continue;
         }
+        const handicap = effectiveHandicap(player.id, player.handicap, round.id, data.roundHandicaps);
         const gross = grossTotal(scores);
-        const net = netScore(gross, player.handicap);
-        perRound[round.id] = { gross, holes: scores.length, net };
+        const net = netScore(gross, handicap);
+        perRound[round.id] = { gross, holes: scores.length, net, handicap };
         totalNet += net;
         totalGross += gross;
         roundsStarted += 1;
@@ -78,7 +80,10 @@ export default function DashboardPage() {
     load();
   }, [load]);
 
-  useRealtimeRefresh(["hole_scores", "players", "groups", "group_members"], load);
+  useRealtimeRefresh(
+    ["hole_scores", "players", "groups", "group_members", "round_handicaps"],
+    load
+  );
 
   if (!data) {
     return <p className="text-neutral-400">Loading…</p>;
@@ -152,7 +157,9 @@ export default function DashboardPage() {
                     return (
                       <td key={r.id} className="px-3 py-2 text-right text-neutral-300">
                         {cell ? (
-                          <span title={`${cell.holes}/18 holes, gross ${cell.gross}, net ${cell.net}`}>
+                          <span
+                            title={`${cell.holes}/18 holes, gross ${cell.gross}, net ${cell.net}, hcp used ${cell.handicap}`}
+                          >
                             {mode === "net" ? cell.net : cell.gross}
                             {cell.holes < 18 && (
                               <span className="text-neutral-500">*</span>
@@ -173,7 +180,10 @@ export default function DashboardPage() {
           </table>
         </div>
         <p className="mt-2 text-xs text-neutral-500">
-          Net = gross strokes − handicap, applied per round. * = round in progress (fewer than 18 holes entered).
+          Net = gross strokes − handicap, applied per round. * = round in progress (fewer than 18
+          holes entered). The Hcp column is each player&apos;s current handicap — once a round
+          starts, that round locks in whatever handicap was set at the time (hover a score to see
+          it), so later handicap changes only affect rounds that haven&apos;t started yet.
         </p>
       </section>
 

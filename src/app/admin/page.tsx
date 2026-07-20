@@ -4,11 +4,13 @@ import { useState } from "react";
 import { PlayersPanel } from "@/components/admin/PlayersPanel";
 import { MatchupsPanel } from "@/components/admin/MatchupsPanel";
 import { ScoresPanel } from "@/components/admin/ScoresPanel";
+import { RoundHandicapsPanel } from "@/components/admin/RoundHandicapsPanel";
 
 const TABS = [
   { id: "players", label: "Players & Handicaps" },
   { id: "matchups", label: "Matchups" },
   { id: "scores", label: "Edit Scores" },
+  { id: "round-handicaps", label: "Round Handicaps" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -37,6 +39,7 @@ export default function AdminPage() {
       {tab === "players" && <PlayersPanel />}
       {tab === "matchups" && <MatchupsPanel />}
       {tab === "scores" && <ScoresPanel />}
+      {tab === "round-handicaps" && <RoundHandicapsPanel />}
     </div>
   );
 }

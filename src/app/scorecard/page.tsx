@@ -5,7 +5,7 @@ import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { supabase } from "@/lib/supabase";
 import { COURSES, DEFAULT_TEE, TeeName, hasHandicapData } from "@/lib/courseData";
-import { strokesReceived } from "@/lib/handicap";
+import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@/lib/handicap";
 import { usePlayers } from "@/components/PlayerProvider";
 import { Player } from "@/lib/types";
 
@@ -54,7 +54,7 @@ export default function ScorecardPage() {
   }, [load]);
 
   useRealtimeRefresh(
-    ["rounds", "groups", "group_members", "carts", "cart_members", "hole_scores"],
+    ["rounds", "groups", "group_members", "carts", "cart_members", "hole_scores", "round_handicaps"],
     load
   );
 
@@ -145,6 +145,18 @@ export default function ScorecardPage() {
     return course?.holes.find((c) => c.hole === hole);
   }
 
+  function roundHandicapFor(playerId: string, globalHandicap: number) {
+    if (!round) return globalHandicap;
+    return effectiveHandicap(playerId, globalHandicap, round.id, data!.roundHandicaps);
+  }
+
+  function isLocked(playerId: string) {
+    if (!round) return false;
+    return data!.roundHandicaps.some(
+      (rh) => rh.round_id === round.id && rh.player_id === playerId
+    );
+  }
+
   const canEdit = Boolean(
     round?.format === "individual" &&
       group &&
@@ -178,6 +190,13 @@ export default function ScorecardPage() {
             );
 
       if (result.error) throw result.error;
+
+      if (trimmed !== "") {
+        const player = data!.players.find((p) => p.id === playerId);
+        if (player) {
+          await lockRoundHandicapIfNeeded(round.id, playerId, player.handicap);
+        }
+      }
 
       setCellStatus((prev) => ({ ...prev, [key]: "saved" }));
       setTimeout(() => {
@@ -435,14 +454,28 @@ export default function ScorecardPage() {
                   )}
 
                   {round.format === "individual" &&
-                    members.map((m) => (
+                    members.map((m) => {
+                      const hcp = roundHandicapFor(m.id, m.handicap);
+                      const locked = isLocked(m.id);
+                      return (
                       <Fragment key={m.id}>
                         <tr className="border-t border-neutral-800">
                           <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
                             {m.name}
+                            <span
+                              className="ml-1 font-normal text-neutral-500"
+                              title={
+                                locked
+                                  ? `Handicap locked at ${hcp} for this round`
+                                  : `Following current handicap (${hcp}) — locks once a score is entered`
+                              }
+                            >
+                              ({hcp}
+                              {locked ? "🔒" : ""})
+                            </span>
                           </td>
                           {FRONT.map((h) => {
-                            const strokes = strokesReceived(m.handicap, holeInfo(h)?.handicap);
+                            const strokes = strokesReceived(hcp, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
                             const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
@@ -467,7 +500,7 @@ export default function ScorecardPage() {
                             {sumGross(m.id, FRONT) ?? "–"}
                           </td>
                           {BACK.map((h) => {
-                            const strokes = strokesReceived(m.handicap, holeInfo(h)?.handicap);
+                            const strokes = strokesReceived(hcp, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
                             const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
@@ -504,7 +537,7 @@ export default function ScorecardPage() {
                               const gross = strokesFor(m.id, h);
                               const net =
                                 gross != null
-                                  ? gross - strokesReceived(m.handicap, holeInfo(h)?.handicap)
+                                  ? gross - strokesReceived(hcp, holeInfo(h)?.handicap)
                                   : null;
                               return (
                                 <td key={h} className={cellClass()}>
@@ -513,13 +546,13 @@ export default function ScorecardPage() {
                               );
                             })}
                             <td className={cellClass("font-semibold")}>
-                              {sumNet(m.id, m.handicap, FRONT) ?? "–"}
+                              {sumNet(m.id, hcp, FRONT) ?? "–"}
                             </td>
                             {BACK.map((h) => {
                               const gross = strokesFor(m.id, h);
                               const net =
                                 gross != null
-                                  ? gross - strokesReceived(m.handicap, holeInfo(h)?.handicap)
+                                  ? gross - strokesReceived(hcp, holeInfo(h)?.handicap)
                                   : null;
                               return (
                                 <td key={h} className={cellClass()}>
@@ -528,15 +561,16 @@ export default function ScorecardPage() {
                               );
                             })}
                             <td className={cellClass("font-semibold")}>
-                              {sumNet(m.id, m.handicap, BACK) ?? "–"}
+                              {sumNet(m.id, hcp, BACK) ?? "–"}
                             </td>
                             <td className={cellClass("font-semibold")}>
-                              {sumNet(m.id, m.handicap, [...FRONT, ...BACK]) ?? "–"}
+                              {sumNet(m.id, hcp, [...FRONT, ...BACK]) ?? "–"}
                             </td>
                           </tr>
                         )}
                       </Fragment>
-                    ))}
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

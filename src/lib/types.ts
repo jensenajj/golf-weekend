@@ -53,4 +53,11 @@ export type HoleScore = {
   updated_at: string;
 };
 
+export type RoundHandicap = {
+  round_id: string;
+  player_id: string;
+  handicap: number;
+  locked_at: string;
+};
+
 export const HOLES = Array.from({ length: 18 }, (_, i) => i + 1);
