@@ -9,6 +9,7 @@ import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@
 import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { roundTeams } from "@/lib/singlesMatch";
+import { bestBallByHole } from "@/lib/matchplay";
 import { usePlayers } from "@/components/PlayerProvider";
 import { Group, HOLES, Player } from "@/lib/types";
 
@@ -363,6 +364,11 @@ export default function ScorecardPage() {
     .map((id) => data.players.find((p) => p.id === id))
     .filter((p): p is Player => Boolean(p));
 
+  // Friday AM's format: 2 groups going head-to-head, no teams table
+  // overlay (that's the singles/cart-pairs formats' job instead).
+  const isTeamFormat =
+    round?.format === "individual" && teamsForRound.length !== 2 && roundGroups.length === 2;
+
   function membersOf(g: { id: string }): Player[] {
     return data!.groupMembers
       .filter((m) => m.group_id === g.id)
@@ -544,6 +550,41 @@ export default function ScorecardPage() {
     return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
   }
 
+  // Best-2-net-balls-of-4 team score, per hole, for a plain "Group vs
+  // Group" round (Friday AM's format) — same math the Games tab's
+  // Group vs Group table already uses.
+  function teamNetByHole(ids: string[]): (number | null)[] {
+    if (!round || !course) return [];
+    return bestBallByHole(data!, round, course, ids, 2);
+  }
+
+  function sumFromByHole(byHole: (number | null)[], holes: number[]) {
+    const vals = holes
+      .map((h) => byHole[h - 1])
+      .filter((v): v is number => v != null);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
+  }
+
+  // Team score relative to par, but with par doubled per hole -- since the
+  // team score is the sum of two players' net scores, an 8 on a par 4 (two
+  // net 4s) is even par for the hole, not +4.
+  function teamToPar(byHole: (number | null)[]): { toPar: number | null; thru: number } {
+    if (!course) return { toPar: null, thru: 0 };
+    let total = 0;
+    let parSum = 0;
+    let thru = 0;
+    HOLES.forEach((h, i) => {
+      const val = byHole[i];
+      if (val == null) return;
+      const par = holeInfo(h)?.par;
+      if (par == null) return;
+      total += val;
+      parSum += par * 2;
+      thru += 1;
+    });
+    return { toPar: thru > 0 ? total - parSum : null, thru };
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-2 overflow-x-auto">
@@ -620,6 +661,38 @@ export default function ScorecardPage() {
               ))}
             </div>
           ) : null}
+
+          {isTeamFormat && course && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {roundGroups.map((g) => {
+                const ids = membersOf(g).map((m) => m.id);
+                const { toPar, thru } = teamToPar(teamNetByHole(ids));
+                return (
+                  <div
+                    key={g.id}
+                    className="space-y-1.5 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3"
+                  >
+                    <p className={`font-medium ${sideColor(groupSide(g))}`}>{g.name}</p>
+                    <p className="text-sm text-neutral-400">
+                      {membersOf(g).map((m) => m.name).join(", ") || "No players assigned"}
+                    </p>
+                    <p className="text-sm text-neutral-300">
+                      Thru {thru}/18
+                      {toPar != null && (
+                        <>
+                          {" · "}
+                          <span className="font-medium">
+                            {toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar}
+                          </span>{" "}
+                          to par
+                        </>
+                      )}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {!course && (
             <p className="text-sm text-amber-400">
@@ -1007,6 +1080,40 @@ export default function ScorecardPage() {
                       </Fragment>
                       );
                     })}
+
+                  {isTeamFormat && group && (() => {
+                    const byHole = teamNetByHole(memberIds);
+                    return (
+                      <tr className="border-t-2 border-neutral-700 bg-neutral-900/60">
+                        <td
+                          className={cellClass(
+                            `text-left sticky left-0 bg-neutral-900/60 font-semibold ${sideColor(groupSide(group))}`
+                          )}
+                        >
+                          Team Score
+                        </td>
+                        {FRONT.map((h) => (
+                          <td key={h} className={cellClass("font-semibold")}>
+                            {byHole[h - 1] ?? "–"}
+                          </td>
+                        ))}
+                        <td className={cellClass("font-semibold")}>
+                          {sumFromByHole(byHole, FRONT) ?? "–"}
+                        </td>
+                        {BACK.map((h) => (
+                          <td key={h} className={cellClass("font-semibold")}>
+                            {byHole[h - 1] ?? "–"}
+                          </td>
+                        ))}
+                        <td className={cellClass("font-semibold")}>
+                          {sumFromByHole(byHole, BACK) ?? "–"}
+                        </td>
+                        <td className={cellClass("font-semibold")}>
+                          {sumFromByHole(byHole, [...FRONT, ...BACK]) ?? "–"}
+                        </td>
+                      </tr>
+                    );
+                  })()}
 
                   {round.format === "scramble" &&
                     roundGroups.map((g) => {
