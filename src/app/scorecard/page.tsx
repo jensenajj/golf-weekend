@@ -1003,8 +1003,7 @@ export default function ScorecardPage() {
                                   : `Following current handicap (${hcp}) — locks once a score is entered`
                               }
                             >
-                              ({hcp}
-                              {locked ? "🔒" : ""})
+                              ({hcp})
                             </span>
                             {points != null && (
                               <span className="ml-1.5 rounded-full bg-neutral-800 px-1.5 py-0.5 text-[11px] font-normal text-neutral-300">
