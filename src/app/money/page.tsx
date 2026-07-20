@@ -6,7 +6,12 @@ import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
 import { allHolesEntered, bestBallByHole, scoreMatch } from "@/lib/matchplay";
 import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
+import { computeAllSkins } from "@/lib/skins";
 import { Round } from "@/lib/types";
+
+function formatMoney(v: number): string {
+  return Number.isInteger(v) ? `${v}` : v.toFixed(2);
+}
 
 type RoundPayoutResult = {
   round: Round;
@@ -111,11 +116,15 @@ export default function MoneyPage() {
   }
 
   const totalPot = data.moneySettings?.total_pot ?? 800;
+  const skinsPot = data.moneySettings?.skins_pot ?? 100;
   const results = data.rounds.map((r) => computeRoundPayout(data, r));
-  const paidOut = results.reduce(
-    (sum, r) => sum + Object.values(r.perPlayer).reduce((s, v) => s + v, 0),
-    0
-  );
+  const skins = computeAllSkins(data);
+  const skinValue = skins.totalSkins > 0 ? skinsPot / skins.totalSkins : 0;
+  const skinsPaidOut = skins.totalSkins > 0 ? skinsPot : 0;
+
+  const paidOut =
+    results.reduce((sum, r) => sum + Object.values(r.perPlayer).reduce((s, v) => s + v, 0), 0) +
+    skinsPaidOut;
   const remaining = totalPot - paidOut;
 
   const playerTotals = data.players
@@ -127,7 +136,10 @@ export default function MoneyPage() {
         perRound[r.round.id] = amount;
         total += amount;
       }
-      return { player: p, perRound, total };
+      const skinsCount = skins.skinsByPlayer[p.id] ?? 0;
+      const skinsAmount = skinsCount * skinValue;
+      total += skinsAmount;
+      return { player: p, perRound, skinsCount, skinsAmount, total };
     })
     .sort((a, b) => b.total - a.total);
 
@@ -140,11 +152,11 @@ export default function MoneyPage() {
         </div>
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-center">
           <p className="text-xs uppercase tracking-wide text-neutral-500">Paid Out</p>
-          <p className="mt-1 text-2xl font-semibold">${paidOut}</p>
+          <p className="mt-1 text-2xl font-semibold">${formatMoney(paidOut)}</p>
         </div>
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-center">
           <p className="text-xs uppercase tracking-wide text-neutral-500">Remaining</p>
-          <p className="mt-1 text-2xl font-semibold">${remaining}</p>
+          <p className="mt-1 text-2xl font-semibold">${formatMoney(remaining)}</p>
         </div>
       </section>
 
@@ -153,7 +165,7 @@ export default function MoneyPage() {
           Winnings
         </h2>
         <div className="overflow-x-auto rounded-xl border border-neutral-800">
-          <table className="w-full min-w-[480px] text-sm">
+          <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-neutral-900 text-neutral-400">
               <tr>
                 <th className="px-3 py-2 text-left font-medium">Player</th>
@@ -162,11 +174,12 @@ export default function MoneyPage() {
                     {r.round.day.slice(0, 3)} {r.round.session}
                   </th>
                 ))}
+                <th className="px-3 py-2 text-right font-medium">Skins</th>
                 <th className="px-3 py-2 text-right font-medium">Total</th>
               </tr>
             </thead>
             <tbody>
-              {playerTotals.map(({ player, perRound, total }, i) => (
+              {playerTotals.map(({ player, perRound, skinsCount, skinsAmount, total }, i) => (
                 <tr
                   key={player.id}
                   className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
@@ -174,13 +187,22 @@ export default function MoneyPage() {
                   <td className="px-3 py-2 font-medium">{player.name}</td>
                   {results.map((r) => (
                     <td key={r.round.id} className="px-3 py-2 text-right text-neutral-300">
-                      {perRound[r.round.id] > 0 ? `$${perRound[r.round.id]}` : (
+                      {perRound[r.round.id] > 0 ? `$${formatMoney(perRound[r.round.id])}` : (
                         <span className="text-neutral-600">–</span>
                       )}
                     </td>
                   ))}
+                  <td className="px-3 py-2 text-right text-neutral-300">
+                    {skinsCount > 0 ? (
+                      <span title={`${skinsCount} skin${skinsCount > 1 ? "s" : ""}`}>
+                        ${formatMoney(skinsAmount)}
+                      </span>
+                    ) : (
+                      <span className="text-neutral-600">–</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right font-semibold text-emerald-400">
-                    ${total}
+                    ${formatMoney(total)}
                   </td>
                 </tr>
               ))}
@@ -227,6 +249,31 @@ export default function MoneyPage() {
           A round&apos;s payout only counts once its result is final (all scores in for AM
           rounds, both team scores in for scrambles) — in-progress rounds show as pending and
           don&apos;t pay out yet.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Skins
+        </h2>
+        <div className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-sm">
+          <span className="font-medium">
+            Skins pot
+            <span className="ml-2 text-xs font-normal text-neutral-500">
+              ${formatMoney(skinsPot)} total
+            </span>
+          </span>
+          <span className={skins.totalSkins > 0 ? "text-emerald-400" : "text-neutral-500"}>
+            {skins.totalSkins > 0
+              ? `${skins.totalSkins} skin${skins.totalSkins > 1 ? "s" : ""} — $${formatMoney(skinValue)} each`
+              : "No skins decided yet"}
+          </span>
+        </div>
+        <p className="mt-2 text-xs text-neutral-500">
+          A hole&apos;s skin needs everyone in that round to have entered it, and only counts
+          once — a tie for lowest net is a push (no skin). The value per skin recalculates as
+          more skins are won across Friday AM, Saturday AM, and Sunday AM, so it may still
+          change until all three are complete.
         </p>
       </section>
     </div>

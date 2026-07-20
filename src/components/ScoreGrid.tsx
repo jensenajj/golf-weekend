@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePlayers } from "@/components/PlayerProvider";
 import { supabase } from "@/lib/supabase";
-import { HOLES, Round } from "@/lib/types";
+import { HOLES } from "@/lib/types";
 import { netScore } from "@/lib/scoring";
 import { lockRoundHandicapIfNeeded } from "@/lib/handicap";
 
@@ -170,84 +169,6 @@ export function ScoreGrid({
       </div>
       {savedAt && !saving && (
         <p className="text-xs text-emerald-400">Saved.</p>
-      )}
-    </div>
-  );
-}
-
-export default function ScorePage() {
-  const { players, currentPlayer, setCurrentPlayerId, loading } = usePlayers();
-  const [rounds, setRounds] = useState<Round[]>([]);
-  const [roundId, setRoundId] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase
-      .from("rounds")
-      .select("*")
-      .eq("format", "individual")
-      .order("sort_order")
-      .then(({ data }) => {
-        setRounds(data ?? []);
-        if (data && data.length > 0) setRoundId(data[0].id);
-      });
-  }, []);
-
-  if (loading) return <p className="text-neutral-400">Loading…</p>;
-
-  if (players.length === 0) {
-    return (
-      <p className="text-neutral-300">
-        No players yet. Add players in Admin first.
-      </p>
-    );
-  }
-
-  if (!currentPlayer) {
-    return (
-      <div className="space-y-3">
-        <p className="text-neutral-300">Who are you?</p>
-        <div className="flex flex-wrap gap-2">
-          {players.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setCurrentPlayerId(p.id)}
-              className="rounded-full bg-neutral-800 px-4 py-2 text-sm font-medium hover:bg-neutral-700"
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="flex gap-2 overflow-x-auto">
-        {rounds.map((r) => (
-          <button
-            key={r.id}
-            onClick={() => setRoundId(r.id)}
-            className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium ${
-              roundId === r.id
-                ? "bg-emerald-600 text-white"
-                : "bg-neutral-800 text-neutral-300"
-            }`}
-          >
-            {r.label}
-          </button>
-        ))}
-      </div>
-
-      {roundId ? (
-        <ScoreGrid
-          key={`${roundId}-${currentPlayer.id}`}
-          roundId={roundId}
-          playerId={currentPlayer.id}
-          handicap={currentPlayer.handicap}
-        />
-      ) : (
-        <p className="text-neutral-400">No individual rounds configured.</p>
       )}
     </div>
   );

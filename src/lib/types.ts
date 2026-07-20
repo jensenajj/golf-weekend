@@ -78,6 +78,7 @@ export type RoundPayout = {
 export type MoneySettings = {
   id: string;
   total_pot: number;
+  skins_pot: number;
 };
 
 export const HOLES = Array.from({ length: 18 }, (_, i) => i + 1);

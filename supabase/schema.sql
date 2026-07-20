@@ -102,10 +102,15 @@ create table if not exists round_payouts (
   tie_amount numeric not null default 10
 );
 
--- Single-row settings table for the overall pot.
+-- Single-row settings table for the overall pot. skins_pot is a fixed
+-- amount split evenly across however many skins actually get won across
+-- all individual rounds combined (holes with no clear single low-net
+-- score are a push and don't count) -- comes out of total_pot, same as
+-- every other game's payout.
 create table if not exists money_settings (
   id text primary key default 'default',
-  total_pot numeric not null default 800
+  total_pot numeric not null default 800,
+  skins_pot numeric not null default 100
 );
 
 -- Seed the fixed weekend schedule (safe to re-run).

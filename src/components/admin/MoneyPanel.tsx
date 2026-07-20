@@ -35,6 +35,13 @@ export function MoneyPanel() {
     load();
   }
 
+  async function setSkinsPot(value: string) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return;
+    await supabase.from("money_settings").upsert({ id: "default", skins_pot: num });
+    load();
+  }
+
   async function setAmount(roundId: string, field: "win_amount" | "tie_amount", value: string) {
     const num = Number(value);
     if (!Number.isFinite(num)) return;
@@ -51,6 +58,7 @@ export function MoneyPanel() {
   }
 
   const totalPot = settings?.total_pot ?? 800;
+  const skinsPot = settings?.skins_pot ?? 100;
 
   return (
     <div className="space-y-4">
@@ -63,6 +71,27 @@ export function MoneyPanel() {
               key={totalPot}
               defaultValue={totalPot}
               onBlur={(e) => setTotalPot(e.target.value)}
+              inputMode="decimal"
+              className="w-20 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-center"
+            />
+          </span>
+        </label>
+      </div>
+
+      <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3">
+        <label className="flex items-center justify-between text-sm">
+          <span className="font-medium">
+            Skins pot
+            <span className="ml-2 block text-xs font-normal text-neutral-500 sm:inline">
+              Split evenly across however many skins get won (Fri/Sat/Sun AM combined)
+            </span>
+          </span>
+          <span className="flex items-center gap-1">
+            $
+            <input
+              key={skinsPot}
+              defaultValue={skinsPot}
+              onBlur={(e) => setSkinsPot(e.target.value)}
               inputMode="decimal"
               className="w-20 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-center"
             />

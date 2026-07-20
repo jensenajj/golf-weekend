@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePlayers } from "@/components/PlayerProvider";
 import { supabase } from "@/lib/supabase";
 import { HOLES, Round, Group } from "@/lib/types";
-import { ScoreGrid } from "@/app/score/page";
+import { ScoreGrid } from "@/components/ScoreGrid";
 
 type HoleValues = Record<number, string>;
 

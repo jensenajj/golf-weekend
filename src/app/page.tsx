@@ -5,6 +5,7 @@ import { fetchAll, FullData } from "@/lib/data";
 import { grossTotal, netScore } from "@/lib/scoring";
 import { effectiveHandicap } from "@/lib/handicap";
 import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
+import { computeAllSkins } from "@/lib/skins";
 import { COURSES } from "@/lib/courseData";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { Player, Round } from "@/lib/types";
@@ -104,6 +105,11 @@ export default function DashboardPage() {
 
   const leaderboard = buildLeaderboard(data, mode);
   const individualRounds = data.rounds.filter((r) => r.format === "individual");
+  const skins = computeAllSkins(data);
+  const skinsLeaders = data.players
+    .map((p) => ({ player: p, count: skins.skinsByPlayer[p.id] ?? 0 }))
+    .filter((s) => s.count > 0)
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div className="space-y-8">
@@ -186,6 +192,46 @@ export default function DashboardPage() {
           holes entered). The Hcp column is each player&apos;s current handicap — once a round
           starts, that round locks in whatever handicap was set at the time (hover a score to see
           it), so later handicap changes only affect rounds that haven&apos;t started yet.
+        </p>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">
+          Skins
+        </h2>
+        {skinsLeaders.length === 0 ? (
+          <p className="text-sm text-neutral-500">
+            No skins won yet — a skin goes to whoever posts the lowest net score on a hole,
+            once everyone in that round has entered it. Ties push (no skin).
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-neutral-800">
+            <table className="w-full min-w-[280px] text-sm">
+              <thead className="bg-neutral-900 text-neutral-400">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">Player</th>
+                  <th className="px-3 py-2 text-right font-medium">Skins</th>
+                </tr>
+              </thead>
+              <tbody>
+                {skinsLeaders.map(({ player, count }, i) => (
+                  <tr
+                    key={player.id}
+                    className={i % 2 === 0 ? "bg-neutral-950" : "bg-neutral-900/40"}
+                  >
+                    <td className="px-3 py-2 font-medium">{player.name}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-emerald-400">
+                      {count}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-2 text-xs text-neutral-500">
+          {skins.totalSkins} skin{skins.totalSkins === 1 ? "" : "s"} won so far across Friday
+          AM, Saturday AM, and Sunday AM combined. Dollar value per skin is on the Money tab.
         </p>
       </section>
 
