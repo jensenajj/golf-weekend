@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { COURSES, DEFAULT_TEE, TeeName, hasHandicapData } from "@/lib/courseData";
 import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@/lib/handicap";
 import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
+import { computeAllSkins } from "@/lib/skins";
 import { usePlayers } from "@/components/PlayerProvider";
 import { Player } from "@/lib/types";
 
@@ -21,6 +22,10 @@ function strokeBg(n: number) {
   if (n >= 2) return "bg-sky-500/25";
   if (n === 1) return "bg-sky-500/10";
   return "";
+}
+
+function skinBg(won: boolean) {
+  return won ? "bg-amber-400/30 ring-1 ring-inset ring-amber-400" : "";
 }
 
 function statusRing(status: CellStatus | undefined) {
@@ -84,6 +89,16 @@ export default function ScorecardPage() {
     | undefined;
   const showHandicap =
     round?.format === "individual" && course ? hasHandicapData(course) : false;
+
+  const skinWinnerByHole = new Map<number, string>();
+  if (round?.format === "individual") {
+    for (const s of computeAllSkins(data).holes) {
+      if (s.round.id === round.id && s.winnerId) skinWinnerByHole.set(s.hole, s.winnerId);
+    }
+  }
+  function isSkinWinner(playerId: string, hole: number) {
+    return skinWinnerByHole.get(hole) === playerId;
+  }
 
   async function setTee(value: string) {
     if (!round) return;
@@ -531,11 +546,15 @@ export default function ScorecardPage() {
                           {FRONT.map((h) => {
                             const strokes = strokesReceived(hcp, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
+                            const won = isSkinWinner(m.id, h);
                             const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
                               <td
                                 key={h}
-                                className={cellClass(`${strokeBg(strokes)} ${statusRing(status)}`)}
+                                className={cellClass(
+                                  `${won ? skinBg(true) : strokeBg(strokes)} ${statusRing(status)}`
+                                )}
+                                title={won ? "Won the skin on this hole" : undefined}
                               >
                                 {canEdit ? (
                                   <input
@@ -556,11 +575,15 @@ export default function ScorecardPage() {
                           {BACK.map((h) => {
                             const strokes = strokesReceived(hcp, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
+                            const won = isSkinWinner(m.id, h);
                             const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
                               <td
                                 key={h}
-                                className={cellClass(`${strokeBg(strokes)} ${statusRing(status)}`)}
+                                className={cellClass(
+                                  `${won ? skinBg(true) : strokeBg(strokes)} ${statusRing(status)}`
+                                )}
+                                title={won ? "Won the skin on this hole" : undefined}
                               >
                                 {canEdit ? (
                                   <input
@@ -594,7 +617,7 @@ export default function ScorecardPage() {
                                   ? gross - strokesReceived(hcp, holeInfo(h)?.handicap)
                                   : null;
                               return (
-                                <td key={h} className={cellClass()}>
+                                <td key={h} className={cellClass(skinBg(isSkinWinner(m.id, h)))}>
                                   {net ?? "–"}
                                 </td>
                               );
@@ -609,7 +632,7 @@ export default function ScorecardPage() {
                                   ? gross - strokesReceived(hcp, holeInfo(h)?.handicap)
                                   : null;
                               return (
-                                <td key={h} className={cellClass()}>
+                                <td key={h} className={cellClass(skinBg(isSkinWinner(m.id, h)))}>
                                   {net ?? "–"}
                                 </td>
                               );
