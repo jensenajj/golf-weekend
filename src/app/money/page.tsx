@@ -19,7 +19,7 @@ function formatMoney(v: number): string {
 type RoundPayoutResult = {
   round: Round;
   status: "not-set-up" | "in-progress" | "final";
-  winnerLabel: string | null;
+  winnerIds: string[];
   tied: boolean;
   perPlayer: Record<string, number>;
 };
@@ -47,25 +47,24 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
     const rankedA = rankedTeamMembers(data, round, teams[0].id);
     const rankedB = rankedTeamMembers(data, round, teams[1].id);
     if (rankedA.length !== 4 || rankedB.length !== 4) {
-      return { round, status: "not-set-up", winnerLabel: null, tied: false, perPlayer };
+      return { round, status: "not-set-up", winnerIds: [], tied: false, perPlayer };
     }
     const singles = computeSinglesMatch(data, round, teams[0].id, teams[1].id);
     if (!singles) {
-      return { round, status: "not-set-up", winnerLabel: null, tied: false, perPlayer };
+      return { round, status: "not-set-up", winnerIds: [], tied: false, perPlayer };
     }
     if (!singles.complete) {
-      return { round, status: "in-progress", winnerLabel: null, tied: false, perPlayer };
+      return { round, status: "in-progress", winnerIds: [], tied: false, perPlayer };
     }
     const membersA = rankedA.map((p) => p.id);
     const membersB = rankedB.map((p) => p.id);
     if (singles.totalA === singles.totalB) {
       for (const id of [...membersA, ...membersB]) perPlayer[id] = tie;
-      return { round, status: "final", winnerLabel: null, tied: true, perPlayer };
+      return { round, status: "final", winnerIds: [], tied: true, perPlayer };
     }
     const winners = singles.totalA > singles.totalB ? membersA : membersB;
-    const winnerName = singles.totalA > singles.totalB ? teams[0].name : teams[1].name;
     for (const id of winners) perPlayer[id] = win;
-    return { round, status: "final", winnerLabel: winnerName, tied: false, perPlayer };
+    return { round, status: "final", winnerIds: winners, tied: false, perPlayer };
   }
 
   const groups = data.groups
@@ -73,7 +72,7 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
     .sort((a, b) => a.sort_order - b.sort_order);
 
   if (groups.length !== 2) {
-    return { round, status: "not-set-up", winnerLabel: null, tied: false, perPlayer };
+    return { round, status: "not-set-up", winnerIds: [], tied: false, perPlayer };
   }
 
   const membersOf = (groupId: string) =>
@@ -83,28 +82,27 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
 
   if (round.format === "scramble") {
     if (!scrambleComplete(data, groups[0].id) || !scrambleComplete(data, groups[1].id)) {
-      return { round, status: "in-progress", winnerLabel: null, tied: false, perPlayer };
+      return { round, status: "in-progress", winnerIds: [], tied: false, perPlayer };
     }
     const scoreA = scrambleTotal(data, groups[0].id)!;
     const scoreB = scrambleTotal(data, groups[1].id)!;
     if (scoreA === scoreB) {
       for (const id of [...membersA, ...membersB]) perPlayer[id] = tie;
-      return { round, status: "final", winnerLabel: null, tied: true, perPlayer };
+      return { round, status: "final", winnerIds: [], tied: true, perPlayer };
     }
     const winners = scoreA < scoreB ? membersA : membersB;
-    const winnerName = scoreA < scoreB ? groups[0].name : groups[1].name;
     for (const id of winners) perPlayer[id] = win;
-    return { round, status: "final", winnerLabel: winnerName, tied: false, perPlayer };
+    return { round, status: "final", winnerIds: winners, tied: false, perPlayer };
   }
 
   // individual round: Group vs Group best-2-net-balls-of-4
   const course = round.course ? COURSES[round.course] : undefined;
   const hasHandicapData = course ? course.holes.every((h) => h.handicap != null) : false;
   if (!course || !hasHandicapData) {
-    return { round, status: "not-set-up", winnerLabel: null, tied: false, perPlayer };
+    return { round, status: "not-set-up", winnerIds: [], tied: false, perPlayer };
   }
   if (!allHolesEntered(data, round.id, [...membersA, ...membersB])) {
-    return { round, status: "in-progress", winnerLabel: null, tied: false, perPlayer };
+    return { round, status: "in-progress", winnerIds: [], tied: false, perPlayer };
   }
   const result = scoreMatch(
     { label: groups[0].name, byHole: bestBallByHole(data, round, course, membersA, 2) },
@@ -112,12 +110,11 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
   );
   if (result.ptsA === result.ptsB) {
     for (const id of [...membersA, ...membersB]) perPlayer[id] = tie;
-    return { round, status: "final", winnerLabel: null, tied: true, perPlayer };
+    return { round, status: "final", winnerIds: [], tied: true, perPlayer };
   }
   const winners = result.ptsA > result.ptsB ? membersA : membersB;
-  const winnerName = result.ptsA > result.ptsB ? groups[0].name : groups[1].name;
   for (const id of winners) perPlayer[id] = win;
-  return { round, status: "final", winnerLabel: winnerName, tied: false, perPlayer };
+  return { round, status: "final", winnerIds: winners, tied: false, perPlayer };
 }
 
 export default function MoneyPage() {
@@ -309,7 +306,13 @@ export default function MoneyPage() {
                   <span className="text-neutral-300">Tied — ${tie} each to all 8</span>
                 )}
                 {r.status === "final" && !r.tied && (
-                  <span className="text-emerald-400">{r.winnerLabel} wins</span>
+                  <span className="text-emerald-400">
+                    {r.winnerIds
+                      .map((id) => data.players.find((p) => p.id === id)?.name)
+                      .filter(Boolean)
+                      .join(", ")}{" "}
+                    win{r.winnerIds.length === 1 ? "s" : ""}
+                  </span>
                 )}
               </div>
             );
