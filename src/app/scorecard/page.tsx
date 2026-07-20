@@ -18,14 +18,26 @@ function cellClass(extra = "") {
   return `min-w-[36px] px-1.5 py-1 text-center ${extra}`;
 }
 
-function strokeBg(n: number) {
-  if (n >= 2) return "bg-sky-500/25";
-  if (n === 1) return "bg-sky-500/10";
-  return "";
-}
-
 function skinBg(won: boolean) {
   return won ? "bg-amber-400/30 ring-1 ring-inset ring-amber-400" : "";
+}
+
+type Mark = "birdie" | "bogey" | "double" | null;
+
+function markFor(score: number | null, par: number | undefined): Mark {
+  if (score == null || par == null) return null;
+  const diff = score - par;
+  if (diff <= -1) return "birdie";
+  if (diff === 1) return "bogey";
+  if (diff >= 2) return "double";
+  return null;
+}
+
+function markClass(mark: Mark) {
+  if (mark === "birdie") return "rounded-full border border-neutral-300";
+  if (mark === "bogey") return "border border-neutral-300";
+  if (mark === "double") return "border-double border-[3px] border-neutral-300";
+  return "";
 }
 
 function statusRing(status: CellStatus | undefined) {
@@ -797,25 +809,35 @@ export default function ScorecardPage() {
                             const strokes = strokesReceived(hcp, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
                             const won = isSkinWinner(m.id, h);
+                            const mark = markFor(val, holeInfo(h)?.par);
                             const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
                               <td
                                 key={h}
-                                className={cellClass(
-                                  `${won ? skinBg(true) : strokeBg(strokes)} ${statusRing(status)}`
-                                )}
+                                className={cellClass(`${skinBg(won)} ${statusRing(status)}`)}
                                 title={won ? "Won the skin on this hole" : undefined}
                               >
-                                {canEdit ? (
-                                  <input
-                                    defaultValue={val ?? ""}
-                                    onBlur={(e) => saveScore(m.id, h, e.target.value)}
-                                    inputMode="numeric"
-                                    className="w-8 bg-transparent text-center outline-none"
-                                  />
-                                ) : (
-                                  val ?? "–"
-                                )}
+                                <div className="flex flex-col items-center gap-0.5 leading-none">
+                                  <span
+                                    className={`inline-flex h-6 min-w-[24px] items-center justify-center px-0.5 ${markClass(mark)}`}
+                                  >
+                                    {canEdit ? (
+                                      <input
+                                        defaultValue={val ?? ""}
+                                        onBlur={(e) => saveScore(m.id, h, e.target.value)}
+                                        inputMode="numeric"
+                                        className="w-5 bg-transparent text-center outline-none"
+                                      />
+                                    ) : (
+                                      (val ?? "–")
+                                    )}
+                                  </span>
+                                  {strokes > 0 && (
+                                    <span className="text-[8px] leading-none tracking-widest text-neutral-500">
+                                      {"•".repeat(strokes)}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                             );
                           })}
@@ -826,25 +848,35 @@ export default function ScorecardPage() {
                             const strokes = strokesReceived(hcp, holeInfo(h)?.handicap);
                             const val = strokesFor(m.id, h);
                             const won = isSkinWinner(m.id, h);
+                            const mark = markFor(val, holeInfo(h)?.par);
                             const status = round ? cellStatus[cellKey(round.id, m.id, h)] : undefined;
                             return (
                               <td
                                 key={h}
-                                className={cellClass(
-                                  `${won ? skinBg(true) : strokeBg(strokes)} ${statusRing(status)}`
-                                )}
+                                className={cellClass(`${skinBg(won)} ${statusRing(status)}`)}
                                 title={won ? "Won the skin on this hole" : undefined}
                               >
-                                {canEdit ? (
-                                  <input
-                                    defaultValue={val ?? ""}
-                                    onBlur={(e) => saveScore(m.id, h, e.target.value)}
-                                    inputMode="numeric"
-                                    className="w-8 bg-transparent text-center outline-none"
-                                  />
-                                ) : (
-                                  val ?? "–"
-                                )}
+                                <div className="flex flex-col items-center gap-0.5 leading-none">
+                                  <span
+                                    className={`inline-flex h-6 min-w-[24px] items-center justify-center px-0.5 ${markClass(mark)}`}
+                                  >
+                                    {canEdit ? (
+                                      <input
+                                        defaultValue={val ?? ""}
+                                        onBlur={(e) => saveScore(m.id, h, e.target.value)}
+                                        inputMode="numeric"
+                                        className="w-5 bg-transparent text-center outline-none"
+                                      />
+                                    ) : (
+                                      (val ?? "–")
+                                    )}
+                                  </span>
+                                  {strokes > 0 && (
+                                    <span className="text-[8px] leading-none tracking-widest text-neutral-500">
+                                      {"•".repeat(strokes)}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                             );
                           })}
