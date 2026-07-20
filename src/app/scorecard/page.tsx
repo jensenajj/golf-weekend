@@ -9,7 +9,7 @@ import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@
 import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { usePlayers } from "@/components/PlayerProvider";
-import { Player } from "@/lib/types";
+import { Group, Player } from "@/lib/types";
 
 const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const BACK = [10, 11, 12, 13, 14, 15, 16, 17, 18];
@@ -106,18 +106,14 @@ export default function ScorecardPage() {
     load();
   }
 
-  async function claimScorekeeper() {
-    if (!group || !currentPlayer) return;
-    await supabase
-      .from("groups")
-      .update({ scorekeeper_id: currentPlayer.id })
-      .eq("id", group.id);
+  async function claimScorekeeper(g: Group) {
+    if (!currentPlayer) return;
+    await supabase.from("groups").update({ scorekeeper_id: currentPlayer.id }).eq("id", g.id);
     load();
   }
 
-  async function releaseScorekeeper() {
-    if (!group) return;
-    await supabase.from("groups").update({ scorekeeper_id: null }).eq("id", group.id);
+  async function releaseScorekeeper(g: Group) {
+    await supabase.from("groups").update({ scorekeeper_id: null }).eq("id", g.id);
     load();
   }
 
@@ -127,6 +123,13 @@ export default function ScorecardPage() {
   const members = memberIds
     .map((id) => data.players.find((p) => p.id === id))
     .filter((p): p is Player => Boolean(p));
+
+  function membersOf(g: { id: string }): Player[] {
+    return data!.groupMembers
+      .filter((m) => m.group_id === g.id)
+      .map((m) => data!.players.find((p) => p.id === m.player_id))
+      .filter((p): p is Player => Boolean(p));
+  }
 
   const groupCarts = group
     ? data.carts.filter((c) => c.group_id === group.id).sort((a, b) => a.sort_order - b.sort_order)
@@ -183,7 +186,10 @@ export default function ScorecardPage() {
     );
   }
 
-  const canEdit = Boolean(group && currentPlayer && group.scorekeeper_id === currentPlayer.id);
+  function canEditGroup(g: Group | null) {
+    return Boolean(g && currentPlayer && g.scorekeeper_id === currentPlayer.id);
+  }
+  const canEdit = canEditGroup(group);
 
   async function saveWithStatus(key: string, action: () => Promise<{ error: unknown }>) {
     setCellStatus((prev) => ({ ...prev, [key]: "saving" }));
@@ -292,10 +298,9 @@ export default function ScorecardPage() {
     return holes.reduce((sum, h) => sum + (holeInfo(h)?.par ?? 0), 0);
   }
 
-  function scrambleTotalFor(holes: number[]) {
-    if (!group) return null;
+  function scrambleTotalFor(groupId: string, holes: number[]) {
     const vals = holes
-      .map((h) => scrambleStrokesFor(data!, group.id, h))
+      .map((h) => scrambleStrokesFor(data!, groupId, h))
       .filter((v): v is number => v != null);
     return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
   }
@@ -355,7 +360,7 @@ export default function ScorecardPage() {
               No {round.format === "scramble" ? "teams" : "groups"} set for this round yet —
               add them in Admin → Matchups.
             </p>
-          ) : (
+          ) : round.format === "individual" ? (
             <div className="flex gap-2 overflow-x-auto">
               {roundGroups.map((g) => (
                 <button
@@ -371,7 +376,7 @@ export default function ScorecardPage() {
                 </button>
               ))}
             </div>
-          )}
+          ) : null}
 
           {!course && (
             <p className="text-sm text-amber-400">
@@ -379,7 +384,7 @@ export default function ScorecardPage() {
             </p>
           )}
 
-          {group && (
+          {round.format === "individual" && group && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-sm">
               <div>
                 {group.scorekeeper_id ? (
@@ -398,14 +403,14 @@ export default function ScorecardPage() {
                 <>
                   {group.scorekeeper_id === currentPlayer.id ? (
                     <button
-                      onClick={releaseScorekeeper}
+                      onClick={() => releaseScorekeeper(group)}
                       className="text-xs text-red-400 hover:text-red-300"
                     >
                       Release
                     </button>
                   ) : !group.scorekeeper_id ? (
                     <button
-                      onClick={claimScorekeeper}
+                      onClick={() => claimScorekeeper(group)}
                       className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white"
                     >
                       Become scorekeeper
@@ -420,28 +425,69 @@ export default function ScorecardPage() {
             <p className="text-xs text-neutral-500">{cartLabel()}</p>
           )}
 
-          {group && round.format === "scramble" && (
-            <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3">
-              <p className="font-medium">{group.name}</p>
-              <p className="text-sm text-neutral-400">
-                {members.map((m) => m.name).join(", ") || "No players assigned"}
-              </p>
-              <p className="mt-1 text-sm text-neutral-300">
-                Thru {scrambleHolesEntered(data, group.id)}/18
-                {(() => {
-                  const toPar = scrambleToPar(data, round, course, group.id);
-                  if (toPar == null) return null;
-                  return (
-                    <>
-                      {" · "}
-                      <span className="font-medium">
-                        {toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar}
-                      </span>{" "}
-                      to par
-                    </>
-                  );
-                })()}
-              </p>
+          {round.format === "scramble" && roundGroups.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {roundGroups.map((g) => {
+                const teamMembers = membersOf(g);
+                const toPar = scrambleToPar(data, round, course, g.id);
+                return (
+                  <div
+                    key={g.id}
+                    className="space-y-1.5 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3"
+                  >
+                    <p className="font-medium">{g.name}</p>
+                    <p className="text-sm text-neutral-400">
+                      {teamMembers.map((m) => m.name).join(", ") || "No players assigned"}
+                    </p>
+                    <p className="text-sm text-neutral-300">
+                      Thru {scrambleHolesEntered(data, g.id)}/18
+                      {toPar != null && (
+                        <>
+                          {" · "}
+                          <span className="font-medium">
+                            {toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar}
+                          </span>{" "}
+                          to par
+                        </>
+                      )}
+                    </p>
+                    <div className="flex items-center justify-between gap-2 pt-1 text-xs">
+                      <span className="text-neutral-500">
+                        {g.scorekeeper_id ? (
+                          <span className="text-neutral-300">
+                            Scorekeeper:{" "}
+                            <span className="font-medium text-neutral-100">
+                              {data.players.find((p) => p.id === g.scorekeeper_id)?.name}
+                            </span>
+                            {currentPlayer?.id === g.scorekeeper_id && " (you)"}
+                          </span>
+                        ) : (
+                          "No scorekeeper claimed yet."
+                        )}
+                      </span>
+                      {currentPlayer && teamMembers.some((m) => m.id === currentPlayer.id) && (
+                        <>
+                          {g.scorekeeper_id === currentPlayer.id ? (
+                            <button
+                              onClick={() => releaseScorekeeper(g)}
+                              className="text-red-400 hover:text-red-300"
+                            >
+                              Release
+                            </button>
+                          ) : !g.scorekeeper_id ? (
+                            <button
+                              onClick={() => claimScorekeeper(g)}
+                              className="rounded-full bg-emerald-600 px-2.5 py-1 font-medium text-white"
+                            >
+                              Become scorekeeper
+                            </button>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -463,7 +509,7 @@ export default function ScorecardPage() {
             </div>
           )}
 
-          {course && group && (
+          {course && (round.format === "scramble" ? roundGroups.length > 0 : group) && (
             <div className="overflow-x-auto rounded-xl border border-neutral-800">
               <table className="text-sm">
                 <thead className="bg-neutral-900 text-neutral-400">
@@ -649,58 +695,62 @@ export default function ScorecardPage() {
                       );
                     })}
 
-                  {round.format === "scramble" && group && (
-                    <tr className="border-t border-neutral-800">
-                      <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
-                        {group.name}
-                      </td>
-                      {FRONT.map((h) => {
-                        const val = scrambleStrokesFor(data, group.id, h);
-                        const status = round ? cellStatus[cellKey(round.id, group.id, h)] : undefined;
-                        return (
-                          <td key={h} className={cellClass(statusRing(status))}>
-                            {canEdit ? (
-                              <input
-                                defaultValue={val ?? ""}
-                                onBlur={(e) => saveScrambleScore(group.id, h, e.target.value)}
-                                inputMode="numeric"
-                                className="w-8 bg-transparent text-center outline-none"
-                              />
-                            ) : (
-                              val ?? "–"
-                            )}
+                  {round.format === "scramble" &&
+                    roundGroups.map((g) => {
+                      const canEditTeam = canEditGroup(g);
+                      return (
+                        <tr key={g.id} className="border-t border-neutral-800">
+                          <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
+                            {g.name}
                           </td>
-                        );
-                      })}
-                      <td className={cellClass("font-semibold")}>
-                        {scrambleTotalFor(FRONT) ?? "–"}
-                      </td>
-                      {BACK.map((h) => {
-                        const val = scrambleStrokesFor(data, group.id, h);
-                        const status = round ? cellStatus[cellKey(round.id, group.id, h)] : undefined;
-                        return (
-                          <td key={h} className={cellClass(statusRing(status))}>
-                            {canEdit ? (
-                              <input
-                                defaultValue={val ?? ""}
-                                onBlur={(e) => saveScrambleScore(group.id, h, e.target.value)}
-                                inputMode="numeric"
-                                className="w-8 bg-transparent text-center outline-none"
-                              />
-                            ) : (
-                              val ?? "–"
-                            )}
+                          {FRONT.map((h) => {
+                            const val = scrambleStrokesFor(data, g.id, h);
+                            const status = round ? cellStatus[cellKey(round.id, g.id, h)] : undefined;
+                            return (
+                              <td key={h} className={cellClass(statusRing(status))}>
+                                {canEditTeam ? (
+                                  <input
+                                    defaultValue={val ?? ""}
+                                    onBlur={(e) => saveScrambleScore(g.id, h, e.target.value)}
+                                    inputMode="numeric"
+                                    className="w-8 bg-transparent text-center outline-none"
+                                  />
+                                ) : (
+                                  val ?? "–"
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className={cellClass("font-semibold")}>
+                            {scrambleTotalFor(g.id, FRONT) ?? "–"}
                           </td>
-                        );
-                      })}
-                      <td className={cellClass("font-semibold")}>
-                        {scrambleTotalFor(BACK) ?? "–"}
-                      </td>
-                      <td className={cellClass("font-semibold")}>
-                        {scrambleTotalFor([...FRONT, ...BACK]) ?? "–"}
-                      </td>
-                    </tr>
-                  )}
+                          {BACK.map((h) => {
+                            const val = scrambleStrokesFor(data, g.id, h);
+                            const status = round ? cellStatus[cellKey(round.id, g.id, h)] : undefined;
+                            return (
+                              <td key={h} className={cellClass(statusRing(status))}>
+                                {canEditTeam ? (
+                                  <input
+                                    defaultValue={val ?? ""}
+                                    onBlur={(e) => saveScrambleScore(g.id, h, e.target.value)}
+                                    inputMode="numeric"
+                                    className="w-8 bg-transparent text-center outline-none"
+                                  />
+                                ) : (
+                                  val ?? "–"
+                                )}
+                              </td>
+                            );
+                          })}
+                          <td className={cellClass("font-semibold")}>
+                            {scrambleTotalFor(g.id, BACK) ?? "–"}
+                          </td>
+                          <td className={cellClass("font-semibold")}>
+                            {scrambleTotalFor(g.id, [...FRONT, ...BACK]) ?? "–"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
