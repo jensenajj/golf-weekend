@@ -8,8 +8,8 @@ import { COURSES, DEFAULT_TEE, TeeName, hasHandicapData } from "@/lib/courseData
 import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@/lib/handicap";
 import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
-import { roundTeams } from "@/lib/singlesMatch";
-import { bestBallByHole } from "@/lib/matchplay";
+import { rankedTeamMembers, roundTeams } from "@/lib/singlesMatch";
+import { bestBallByHole, netFor, scoreMatch } from "@/lib/matchplay";
 import { usePlayers } from "@/components/PlayerProvider";
 import { Group, HOLES, Player } from "@/lib/types";
 
@@ -368,6 +368,49 @@ export default function ScorecardPage() {
   // overlay (that's the singles/cart-pairs formats' job instead).
   const isTeamFormat =
     round?.format === "individual" && teamsForRound.length !== 2 && roundGroups.length === 2;
+
+  const isSingles = round?.team_format === "singles";
+
+  // Which rank (0 = A ... 3 = D) a player holds on their team, so the two
+  // rank-mates riding in this physical group (one from each team) can be
+  // stacked together instead of grouped by team.
+  function singlesRankIndex(playerId: string): number | null {
+    if (!round) return null;
+    for (const team of teamsForRound) {
+      const idx = rankedTeamMembers(data!, round, team.id).findIndex((p) => p.id === playerId);
+      if (idx !== -1) return idx;
+    }
+    return null;
+  }
+
+  const orderedMembers = isSingles
+    ? [...members].sort((a, b) => (singlesRankIndex(a.id) ?? 0) - (singlesRankIndex(b.id) ?? 0))
+    : members;
+
+  // Points won so far in this player's individual rank-vs-rank match
+  // (same math as the Games tab's singles matchups), based on whatever
+  // holes both players have entered -- not gated on the round being fully
+  // complete, since this is meant to read as a live match status.
+  function singlesMatchPoints(playerId: string): number | null {
+    if (!round || teamsForRound.length !== 2) return null;
+    const rankedByTeam = teamsForRound.map((t) => rankedTeamMembers(data!, round, t.id));
+    for (let teamIdx = 0; teamIdx < 2; teamIdx++) {
+      const idx = rankedByTeam[teamIdx].findIndex((p) => p.id === playerId);
+      if (idx === -1) continue;
+      const me = rankedByTeam[teamIdx][idx];
+      const opponent = rankedByTeam[1 - teamIdx][idx];
+      if (!opponent) return null;
+      const result = scoreMatch(
+        { label: me.name, byHole: HOLES.map((h) => netFor(data!, round, course, me.id, h)) },
+        {
+          label: opponent.name,
+          byHole: HOLES.map((h) => netFor(data!, round, course, opponent.id, h)),
+        }
+      );
+      return teamIdx === 0 ? result.ptsA : result.ptsB;
+    }
+    return null;
+  }
 
   function membersOf(g: { id: string }): Player[] {
     return data!.groupMembers
@@ -931,15 +974,24 @@ export default function ScorecardPage() {
                   )}
 
                   {round.format === "individual" &&
-                    members.map((m) => {
+                    orderedMembers.map((m, idx) => {
                       const hcp = roundHandicapFor(m.id, m.handicap);
                       const locked = isLocked(m.id);
+                      const points = isSingles ? singlesMatchPoints(m.id) : null;
                       return (
                       <Fragment key={m.id}>
+                        {isSingles && idx === 2 && (
+                          <tr aria-hidden="true">
+                            <td
+                              colSpan={FRONT.length + BACK.length + 4}
+                              className="h-3 border-t-2 border-b-2 border-neutral-700 bg-neutral-950 p-0"
+                            />
+                          </tr>
+                        )}
                         <tr className="border-t border-neutral-800">
                           <td
                             className={cellClass(
-                              `text-left sticky left-0 bg-neutral-950 font-medium ${sideColor(playerSide(m.id))}`
+                              `text-left sticky left-0 whitespace-nowrap bg-neutral-950 font-medium ${sideColor(playerSide(m.id))}`
                             )}
                           >
                             {m.name}
@@ -954,6 +1006,11 @@ export default function ScorecardPage() {
                               ({hcp}
                               {locked ? "🔒" : ""})
                             </span>
+                            {points != null && (
+                              <span className="ml-1.5 rounded-full bg-neutral-800 px-1.5 py-0.5 text-[11px] font-normal text-neutral-300">
+                                {points % 1 === 0 ? points : points.toFixed(1)} pts
+                              </span>
+                            )}
                           </td>
                           {FRONT.map((h) => {
                             const strokes = strokesReceived(hcp, holeInfo(h)?.handicap);
