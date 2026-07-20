@@ -1,4 +1,5 @@
 export type RoundFormat = "individual" | "scramble";
+export type TeamFormat = "singles" | "cart_pairs";
 
 export type Player = {
   id: string;
@@ -16,6 +17,7 @@ export type Round = {
   course: string | null;
   tee: string;
   sort_order: number;
+  team_format: TeamFormat | null;
 };
 
 export type Group = {
@@ -54,6 +56,7 @@ export type Team = {
 export type TeamMember = {
   team_id: string;
   player_id: string;
+  group_slot: 1 | 2 | null;
 };
 
 export type HoleScore = {

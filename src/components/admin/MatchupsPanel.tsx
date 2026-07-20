@@ -5,7 +5,18 @@ import { supabase } from "@/lib/supabase";
 import { usePlayers } from "@/components/PlayerProvider";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { RANK_LABELS, syncOnCourseGroups } from "@/lib/singlesMatch";
-import { Cart, CartMember, Group, GroupMember, Player, Round, Team, TeamMember } from "@/lib/types";
+import { syncCartPairGroups } from "@/lib/cartPairsMatch";
+import {
+  Cart,
+  CartMember,
+  Group,
+  GroupMember,
+  Player,
+  Round,
+  Team,
+  TeamFormat,
+  TeamMember,
+} from "@/lib/types";
 
 export function MatchupsPanel() {
   const { players } = usePlayers();
@@ -156,21 +167,23 @@ export function MatchupsPanel() {
       .sort((a, b) => a.handicap - b.handicap || a.name.localeCompare(b.name));
   }
 
-  async function setUpTeams() {
+  async function setUpTeams(format: TeamFormat) {
     if (!roundId) return;
     await supabase.from("teams").insert([
       { round_id: roundId, name: "Team 1", sort_order: 1 },
       { round_id: roundId, name: "Team 2", sort_order: 2 },
     ]);
+    await supabase.from("rounds").update({ team_format: format }).eq("id", roundId);
     load();
   }
 
   async function removeTeams() {
-    if (roundTeams.length === 0) return;
+    if (roundTeams.length === 0 || !roundId) return;
     await supabase
       .from("teams")
       .delete()
       .in("id", roundTeams.map((t) => t.id));
+    await supabase.from("rounds").update({ team_format: null }).eq("id", roundId);
     load();
   }
 
@@ -204,7 +217,7 @@ export function MatchupsPanel() {
     const nextMembers = freshMembers ?? [];
     setTeamMembers(nextMembers);
 
-    if (round && roundTeams.length === 2) {
+    if (round && roundTeams.length === 2 && round.team_format === "singles") {
       const rank = (teamId2: string) => {
         const ids = new Set(
           nextMembers.filter((m) => m.team_id === teamId2).map((m) => m.player_id)
@@ -218,6 +231,23 @@ export function MatchupsPanel() {
       if (rankedA.length === 4 && rankedB.length === 4) {
         await syncOnCourseGroups(round, roundTeams[0], roundTeams[1], rankedA, rankedB);
       }
+    }
+    load();
+  }
+
+  async function setTeamSlot(teamId: string, playerId: string, slot: 1 | 2) {
+    await supabase
+      .from("team_members")
+      .update({ group_slot: slot })
+      .eq("team_id", teamId)
+      .eq("player_id", playerId);
+
+    const { data: freshMembers } = await supabase.from("team_members").select("*");
+    const nextMembers = freshMembers ?? [];
+    setTeamMembers(nextMembers);
+
+    if (round && roundTeams.length === 2 && round.team_format === "cart_pairs") {
+      await syncCartPairGroups(round, roundTeams[0], roundTeams[1], nextMembers);
     }
     load();
   }
@@ -392,20 +422,38 @@ export function MatchupsPanel() {
             <div className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900/20 p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold">Singles Match Play (optional)</p>
+                  <p className="text-sm font-semibold">Team-Based Format (optional)</p>
                   <p className="text-xs text-neutral-500">
-                    Set up 2 teams of 4. Once both are full, the A/B/C/D-ranked (by handicap)
-                    on-course Groups/Carts above get regenerated automatically so A can play A,
-                    B play B, etc. — and Games/Money switch this round to the singles format.
+                    {roundTeams.length === 0 ? (
+                      <>
+                        Singles ranks each team A/B/C/D by handicap for 4 individual net
+                        matches. Cart Pairs lets you manually split each team into 2 pairs, one
+                        per on-course group, scored like Cart vs Cart. Either way, the on-course
+                        Groups/Carts above regenerate automatically, and Games/Money switch to
+                        the chosen format.
+                      </>
+                    ) : round.team_format === "singles" ? (
+                      "Singles (A/B/C/D): each team ranked by handicap, 4 individual net matches."
+                    ) : (
+                      "Cart Pairs: each team manually split into 2 pairs, one per on-course group."
+                    )}
                   </p>
                 </div>
                 {roundTeams.length === 0 ? (
-                  <button
-                    onClick={setUpTeams}
-                    className="shrink-0 rounded-full bg-neutral-800 px-3 py-1.5 text-xs font-medium hover:bg-neutral-700"
-                  >
-                    + Set up teams
-                  </button>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() => setUpTeams("singles")}
+                      className="rounded-full bg-neutral-800 px-3 py-1.5 text-xs font-medium hover:bg-neutral-700"
+                    >
+                      + Singles (A/B/C/D)
+                    </button>
+                    <button
+                      onClick={() => setUpTeams("cart_pairs")}
+                      className="rounded-full bg-neutral-800 px-3 py-1.5 text-xs font-medium hover:bg-neutral-700"
+                    >
+                      + Cart Pairs
+                    </button>
+                  </div>
                 ) : (
                   <button
                     onClick={removeTeams}
@@ -416,7 +464,7 @@ export function MatchupsPanel() {
                 )}
               </div>
 
-              {roundTeams.length > 0 && (
+              {roundTeams.length > 0 && round.team_format === "singles" && (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {roundTeams.map((t) => {
                     const ranked = rankedMembers(t.id);
@@ -455,6 +503,77 @@ export function MatchupsPanel() {
                               .map((p, i) => `${RANK_LABELS[i]}: ${p.name} (${p.handicap})`)
                               .join(" · ")}
                           </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {roundTeams.length > 0 && round.team_format === "cart_pairs" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {roundTeams.map((t) => {
+                    const memberRows = teamMembers.filter((m) => m.team_id === t.id);
+                    const memberIds = new Set(memberRows.map((m) => m.player_id));
+                    const memberPlayers = players.filter((p) => memberIds.has(p.id));
+                    return (
+                      <div
+                        key={t.id}
+                        className="space-y-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3"
+                      >
+                        <input
+                          defaultValue={t.name}
+                          onBlur={(e) => renameTeam(t.id, e.target.value)}
+                          className="w-full rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm font-medium"
+                        />
+                        <div className="flex flex-wrap gap-1.5">
+                          {players.map((p) => {
+                            const active = memberIds.has(p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => toggleTeamMember(t.id, p.id, active)}
+                                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                                  active
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-neutral-800 text-neutral-400"
+                                }`}
+                              >
+                                {p.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {memberPlayers.length > 0 && (
+                          <div className="space-y-1 border-t border-neutral-800 pt-2">
+                            {memberPlayers.map((p) => {
+                              const row = memberRows.find((m) => m.player_id === p.id);
+                              const slot = row?.group_slot ?? null;
+                              return (
+                                <div
+                                  key={p.id}
+                                  className="flex items-center justify-between text-xs"
+                                >
+                                  <span className="text-neutral-300">{p.name}</span>
+                                  <div className="flex gap-1">
+                                    {([1, 2] as const).map((s) => (
+                                      <button
+                                        key={s}
+                                        onClick={() => setTeamSlot(t.id, p.id, s)}
+                                        className={`rounded-full px-2 py-0.5 font-medium ${
+                                          slot === s
+                                            ? "bg-sky-600 text-white"
+                                            : "bg-neutral-800 text-neutral-400"
+                                        }`}
+                                      >
+                                        Grp {s}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     );

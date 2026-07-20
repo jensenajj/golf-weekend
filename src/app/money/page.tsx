@@ -9,6 +9,7 @@ import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { computeLowNet, computeWeekendLowNet } from "@/lib/lowNet";
 import { computeSinglesMatch, rankedTeamMembers, roundTeams } from "@/lib/singlesMatch";
+import { computeCartPairsMatch, teamSlot } from "@/lib/cartPairsMatch";
 import { defaultWinAmount, tieAmountFor } from "@/lib/money";
 import { Round } from "@/lib/types";
 
@@ -38,12 +39,13 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
   const { win, tie } = payoutAmountsFor(data, round);
   const perPlayer: Record<string, number> = {};
 
-  // Singles (A/B/C/D) match play takes over a round's money result the
-  // moment it has 2 fully-staffed teams -- see lib/singlesMatch.ts. The
+  // Singles (A/B/C/D) and Cart Pairs match play both take over a round's
+  // money result the moment it has 2 fully-staffed teams of the matching
+  // team_format -- see lib/singlesMatch.ts / lib/cartPairsMatch.ts. The
   // on-course groups (used for scoring/carts/skins/low-net) stay
   // independent of this and are unaffected.
   const teams = roundTeams(data, round.id);
-  if (round.format === "individual" && teams.length === 2) {
+  if (round.format === "individual" && teams.length === 2 && round.team_format === "singles") {
     const rankedA = rankedTeamMembers(data, round, teams[0].id);
     const rankedB = rankedTeamMembers(data, round, teams[1].id);
     if (rankedA.length !== 4 || rankedB.length !== 4) {
@@ -63,6 +65,40 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
       return { round, status: "final", winnerIds: [], tied: true, perPlayer };
     }
     const winners = singles.totalA > singles.totalB ? membersA : membersB;
+    for (const id of winners) perPlayer[id] = win;
+    return { round, status: "final", winnerIds: winners, tied: false, perPlayer };
+  }
+
+  if (
+    round.format === "individual" &&
+    teams.length === 2 &&
+    round.team_format === "cart_pairs"
+  ) {
+    const membersA = data.teamMembers
+      .filter((m) => m.team_id === teams[0].id)
+      .map((m) => m.player_id);
+    const membersB = data.teamMembers
+      .filter((m) => m.team_id === teams[1].id)
+      .map((m) => m.player_id);
+    const a1 = teamSlot(data.teamMembers, teams[0].id, 1);
+    const a2 = teamSlot(data.teamMembers, teams[0].id, 2);
+    const b1 = teamSlot(data.teamMembers, teams[1].id, 1);
+    const b2 = teamSlot(data.teamMembers, teams[1].id, 2);
+    if (a1.length !== 2 || a2.length !== 2 || b1.length !== 2 || b2.length !== 2) {
+      return { round, status: "not-set-up", winnerIds: [], tied: false, perPlayer };
+    }
+    const cartPairs = computeCartPairsMatch(data, round, teams[0].id, teams[1].id);
+    if (!cartPairs) {
+      return { round, status: "not-set-up", winnerIds: [], tied: false, perPlayer };
+    }
+    if (!cartPairs.complete) {
+      return { round, status: "in-progress", winnerIds: [], tied: false, perPlayer };
+    }
+    if (cartPairs.totalA === cartPairs.totalB) {
+      for (const id of [...membersA, ...membersB]) perPlayer[id] = tie;
+      return { round, status: "final", winnerIds: [], tied: true, perPlayer };
+    }
+    const winners = cartPairs.totalA > cartPairs.totalB ? membersA : membersB;
     for (const id of winners) perPlayer[id] = win;
     return { round, status: "final", winnerIds: winners, tied: false, perPlayer };
   }

@@ -10,6 +10,13 @@ create table if not exists players (
   created_at timestamptz not null default now()
 );
 
+-- team_format is null for the default group-vs-group best-ball scoring.
+-- 'singles' means this round's 2 teams (see `teams` below) are ranked
+-- A/B/C/D by handicap and played as 4 individual net matches (Saturday
+-- AM's format). 'cart_pairs' means each team's 4 are manually split into 2
+-- pairs (team_members.group_slot), one pair per on-course group, scored as
+-- best-net-ball-of-2 cart vs cart per group and summed into team totals
+-- (Sunday AM's format). Only meaningful when format = 'individual'.
 create table if not exists rounds (
   id uuid primary key default gen_random_uuid(),
   label text not null,
@@ -19,6 +26,7 @@ create table if not exists rounds (
   course text,
   tee text not null default 'Blue',
   sort_order int not null,
+  team_format text check (team_format in ('singles', 'cart_pairs')),
   unique (day, session)
 );
 
@@ -40,13 +48,11 @@ create table if not exists group_members (
 );
 
 -- Independent of groups/carts (which represent on-course physical
--- foursomes/pairs). Teams represent who's competing against whom for a
--- round's singles match play format (see lib/singlesMatch.ts) -- e.g. for
--- Saturday AM, the A/B/C/D-ranked players are drawn from teams, but then
--- physically ride/play in groups/carts arranged across both teams (A+B
--- together, C+D together). A round is treated as singles format by the app
--- whenever it has exactly 2 teams with 4 members each; otherwise it falls
--- back to the group-vs-group best-ball format.
+-- foursomes/pairs). Teams represent who's competing against whom -- see
+-- rounds.team_format above for what a round's 2 teams mean. group_slot (1
+-- or 2, only used for 'cart_pairs') says which on-course group that team
+-- member physically plays in; unused/null for 'singles' rounds, which rank
+-- by handicap instead (see lib/singlesMatch.ts).
 create table if not exists teams (
   id uuid primary key default gen_random_uuid(),
   round_id uuid not null references rounds(id) on delete cascade,
@@ -57,6 +63,7 @@ create table if not exists teams (
 create table if not exists team_members (
   team_id uuid not null references teams(id) on delete cascade,
   player_id uuid not null references players(id) on delete cascade,
+  group_slot smallint check (group_slot in (1, 2)),
   primary key (team_id, player_id)
 );
 

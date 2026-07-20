@@ -7,6 +7,7 @@ import { COURSES } from "@/lib/courseData";
 import { MatchSide, bestBallByHole, netFor, scoreMatch } from "@/lib/matchplay";
 import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
 import { RANK_LABELS, computeSinglesMatch, rankedTeamMembers, roundTeams } from "@/lib/singlesMatch";
+import { computeCartPairsMatch, teamSlot } from "@/lib/cartPairsMatch";
 import { HOLES } from "@/lib/types";
 
 // Players are already sorted by name (see fetchAll), so filtering preserves
@@ -124,7 +125,7 @@ export default function GamesPage() {
   const roundGroups = round
     ? data.groups.filter((g) => g.round_id === round.id).sort((a, b) => a.sort_order - b.sort_order)
     : [];
-  const singlesTeams = round ? roundTeams(data, round.id) : [];
+  const teamsForRound = round ? roundTeams(data, round.id) : [];
 
   const hasHandicapData = course ? course.holes.every((h) => h.handicap != null) : false;
 
@@ -204,14 +205,14 @@ export default function GamesPage() {
         </p>
       ) : (
         <>
-          {singlesTeams.length === 2 ? (
+          {round.team_format === "singles" && teamsForRound.length === 2 ? (
             <section className="space-y-3">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
                 Team Match Play — A/B/C/D singles
               </h2>
               {(() => {
-                const rankedA = rankedTeamMembers(data, round, singlesTeams[0].id);
-                const rankedB = rankedTeamMembers(data, round, singlesTeams[1].id);
+                const rankedA = rankedTeamMembers(data, round, teamsForRound[0].id);
+                const rankedB = rankedTeamMembers(data, round, teamsForRound[1].id);
                 if (rankedA.length !== 4 || rankedB.length !== 4) {
                   return (
                     <p className="text-sm text-neutral-500">
@@ -223,8 +224,8 @@ export default function GamesPage() {
                 const singles = computeSinglesMatch(
                   data,
                   round,
-                  singlesTeams[0].id,
-                  singlesTeams[1].id
+                  teamsForRound[0].id,
+                  teamsForRound[1].id
                 );
                 if (!singles) return null;
                 const winner = !singles.complete
@@ -253,8 +254,8 @@ export default function GamesPage() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {[
-                        { team: singlesTeams[0], total: singles.totalA, side: "A" as const },
-                        { team: singlesTeams[1], total: singles.totalB, side: "B" as const },
+                        { team: teamsForRound[0], total: singles.totalA, side: "A" as const },
+                        { team: teamsForRound[1], total: singles.totalB, side: "B" as const },
                       ].map(({ team, total, side }) => (
                         <div
                           key={team.id}
@@ -268,6 +269,84 @@ export default function GamesPage() {
                           <p className="text-2xl font-semibold">{total}</p>
                           <p className="text-xs text-neutral-500">
                             {singles.complete ? "Final" : "In progress"}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+            </section>
+          ) : round.team_format === "cart_pairs" && teamsForRound.length === 2 ? (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+                Team Match Play — Cart Pairs
+              </h2>
+              {(() => {
+                const teamA = teamsForRound[0];
+                const teamB = teamsForRound[1];
+                const a1 = teamSlot(data.teamMembers, teamA.id, 1);
+                const a2 = teamSlot(data.teamMembers, teamA.id, 2);
+                const b1 = teamSlot(data.teamMembers, teamB.id, 1);
+                const b2 = teamSlot(data.teamMembers, teamB.id, 2);
+                if (a1.length !== 2 || a2.length !== 2 || b1.length !== 2 || b2.length !== 2) {
+                  return (
+                    <p className="text-sm text-neutral-500">
+                      Needs each team split into 2 pairs (Grp 1 / Grp 2) — finish setting them
+                      up in Admin → Matchups.
+                    </p>
+                  );
+                }
+                const result = computeCartPairsMatch(data, round, teamA.id, teamB.id);
+                if (!result) return null;
+                const winner = !result.complete
+                  ? null
+                  : result.totalA > result.totalB
+                    ? "A"
+                    : result.totalB > result.totalA
+                      ? "B"
+                      : "T";
+                return (
+                  <>
+                    <div className="space-y-3">
+                      <MatchTable
+                        a={{
+                          label: `Group 1: ${teamA.name}`,
+                          byHole: bestBallByHole(data, round, course, a1, 1),
+                        }}
+                        b={{
+                          label: `Group 1: ${teamB.name}`,
+                          byHole: bestBallByHole(data, round, course, b1, 1),
+                        }}
+                      />
+                      <MatchTable
+                        a={{
+                          label: `Group 2: ${teamA.name}`,
+                          byHole: bestBallByHole(data, round, course, a2, 1),
+                        }}
+                        b={{
+                          label: `Group 2: ${teamB.name}`,
+                          byHole: bestBallByHole(data, round, course, b2, 1),
+                        }}
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {[
+                        { team: teamA, total: result.totalA, side: "A" as const },
+                        { team: teamB, total: result.totalB, side: "B" as const },
+                      ].map(({ team, total, side }) => (
+                        <div
+                          key={team.id}
+                          className={`rounded-xl border p-3 ${
+                            winner === side
+                              ? "border-emerald-600 bg-emerald-500/10"
+                              : "border-neutral-800 bg-neutral-900/40"
+                          }`}
+                        >
+                          <p className="font-medium">{team.name}</p>
+                          <p className="text-2xl font-semibold">{total}</p>
+                          <p className="text-xs text-neutral-500">
+                            {result.complete ? "Final" : "In progress"}
                           </p>
                         </div>
                       ))}
@@ -317,54 +396,56 @@ export default function GamesPage() {
             </section>
           )}
 
-          <section className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
-              Cart vs Cart — best net ball
-            </h2>
-            {roundGroups.map((g) => {
-              const groupCarts = data.carts
-                .filter((c) => c.group_id === g.id)
-                .sort((a, b) => a.sort_order - b.sort_order);
-              return (
-                <div key={g.id} className="space-y-1.5">
-                  <p className="text-sm font-medium text-neutral-300">{groupLabel(data, g)}</p>
-                  {groupCarts.length !== 2 ? (
-                    <p className="text-sm text-neutral-500">
-                      Needs exactly 2 carts (found {groupCarts.length}) — assign them in
-                      Admin → Matchups.
-                    </p>
-                  ) : (
-                    <MatchTable
-                      a={{
-                        label: cartLabel(data, groupCarts[0]),
-                        byHole: bestBallByHole(
-                          data,
-                          round,
-                          course,
-                          data.cartMembers
-                            .filter((m) => m.cart_id === groupCarts[0].id)
-                            .map((m) => m.player_id),
-                          1
-                        ),
-                      }}
-                      b={{
-                        label: cartLabel(data, groupCarts[1]),
-                        byHole: bestBallByHole(
-                          data,
-                          round,
-                          course,
-                          data.cartMembers
-                            .filter((m) => m.cart_id === groupCarts[1].id)
-                            .map((m) => m.player_id),
-                          1
-                        ),
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </section>
+          {round.team_format !== "cart_pairs" && (
+            <section className="space-y-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+                Cart vs Cart — best net ball
+              </h2>
+              {roundGroups.map((g) => {
+                const groupCarts = data.carts
+                  .filter((c) => c.group_id === g.id)
+                  .sort((a, b) => a.sort_order - b.sort_order);
+                return (
+                  <div key={g.id} className="space-y-1.5">
+                    <p className="text-sm font-medium text-neutral-300">{groupLabel(data, g)}</p>
+                    {groupCarts.length !== 2 ? (
+                      <p className="text-sm text-neutral-500">
+                        Needs exactly 2 carts (found {groupCarts.length}) — assign them in
+                        Admin → Matchups.
+                      </p>
+                    ) : (
+                      <MatchTable
+                        a={{
+                          label: cartLabel(data, groupCarts[0]),
+                          byHole: bestBallByHole(
+                            data,
+                            round,
+                            course,
+                            data.cartMembers
+                              .filter((m) => m.cart_id === groupCarts[0].id)
+                              .map((m) => m.player_id),
+                            1
+                          ),
+                        }}
+                        b={{
+                          label: cartLabel(data, groupCarts[1]),
+                          byHole: bestBallByHole(
+                            data,
+                            round,
+                            course,
+                            data.cartMembers
+                              .filter((m) => m.cart_id === groupCarts[1].id)
+                              .map((m) => m.player_id),
+                            1
+                          ),
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          )}
         </>
       )}
     </div>
