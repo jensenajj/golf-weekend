@@ -22,14 +22,15 @@ function skinBg(won: boolean) {
   return won ? "bg-amber-400/30 ring-1 ring-inset ring-amber-400" : "";
 }
 
-type Mark = "birdie" | "bogey" | "double" | null;
+type Mark = "birdie" | "bogey" | "double" | "triple" | null;
 
 function markFor(score: number | null, par: number | undefined): Mark {
   if (score == null || par == null) return null;
   const diff = score - par;
   if (diff <= -1) return "birdie";
   if (diff === 1) return "bogey";
-  if (diff >= 2) return "double";
+  if (diff === 2) return "double";
+  if (diff >= 3) return "triple";
   return null;
 }
 
@@ -38,6 +39,39 @@ function markClass(mark: Mark) {
   if (mark === "bogey") return "border border-neutral-300";
   if (mark === "double") return "border-double border-[3px] border-neutral-300";
   return "";
+}
+
+// Triangle can't be a simple border utility, so it's an SVG outline sitting
+// behind the score, with the score nudged up to sit visually centered in
+// the wider bottom of the triangle rather than dead-center of the box.
+function ScoreMark({ mark, children }: { mark: Mark; children: React.ReactNode }) {
+  if (mark === "triple") {
+    return (
+      <span className="relative inline-flex h-7 min-w-[26px] items-center justify-center px-0.5">
+        <svg
+          viewBox="0 0 26 26"
+          preserveAspectRatio="none"
+          className="pointer-events-none absolute inset-0 h-full w-full text-neutral-300"
+        >
+          <polygon
+            points="13,3 24,22 2,22"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="relative z-10 pb-0.5">{children}</span>
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`inline-flex h-6 min-w-[24px] items-center justify-center px-0.5 ${markClass(mark)}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 function statusRing(status: CellStatus | undefined) {
@@ -818,9 +852,7 @@ export default function ScorecardPage() {
                                 title={won ? "Won the skin on this hole" : undefined}
                               >
                                 <div className="flex flex-col items-center gap-0.5 leading-none">
-                                  <span
-                                    className={`inline-flex h-6 min-w-[24px] items-center justify-center px-0.5 ${markClass(mark)}`}
-                                  >
+                                  <ScoreMark mark={mark}>
                                     {canEdit ? (
                                       <input
                                         defaultValue={val ?? ""}
@@ -831,9 +863,9 @@ export default function ScorecardPage() {
                                     ) : (
                                       (val ?? "–")
                                     )}
-                                  </span>
+                                  </ScoreMark>
                                   {strokes > 0 && (
-                                    <span className="text-[8px] leading-none tracking-widest text-neutral-500">
+                                    <span className="text-[11px] leading-none tracking-widest text-neutral-400">
                                       {"•".repeat(strokes)}
                                     </span>
                                   )}
@@ -857,9 +889,7 @@ export default function ScorecardPage() {
                                 title={won ? "Won the skin on this hole" : undefined}
                               >
                                 <div className="flex flex-col items-center gap-0.5 leading-none">
-                                  <span
-                                    className={`inline-flex h-6 min-w-[24px] items-center justify-center px-0.5 ${markClass(mark)}`}
-                                  >
+                                  <ScoreMark mark={mark}>
                                     {canEdit ? (
                                       <input
                                         defaultValue={val ?? ""}
@@ -870,9 +900,9 @@ export default function ScorecardPage() {
                                     ) : (
                                       (val ?? "–")
                                     )}
-                                  </span>
+                                  </ScoreMark>
                                   {strokes > 0 && (
-                                    <span className="text-[8px] leading-none tracking-widest text-neutral-500">
+                                    <span className="text-[11px] leading-none tracking-widest text-neutral-400">
                                       {"•".repeat(strokes)}
                                     </span>
                                   )}
