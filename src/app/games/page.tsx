@@ -5,6 +5,7 @@ import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
 import { MatchSide, bestBallByHole, scoreMatch } from "@/lib/matchplay";
+import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
 import { HOLES } from "@/lib/types";
 
 function MatchTable({ a, b }: { a: MatchSide; b: MatchSide }) {
@@ -77,7 +78,16 @@ export default function GamesPage() {
   }, [load]);
 
   useRealtimeRefresh(
-    ["rounds", "groups", "group_members", "carts", "cart_members", "hole_scores", "round_handicaps"],
+    [
+      "rounds",
+      "groups",
+      "group_members",
+      "carts",
+      "cart_members",
+      "hole_scores",
+      "scramble_scores",
+      "round_handicaps",
+    ],
     load
   );
 
@@ -110,11 +120,56 @@ export default function GamesPage() {
         ))}
       </div>
 
-      {!round ? null : round.format !== "individual" ? (
-        <p className="text-sm text-neutral-500">
-          Match play games apply to individually-scored rounds only — {round.label} is a
-          scramble.
-        </p>
+      {!round ? null : round.format === "scramble" ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
+            Team vs Team — total score to par
+          </h2>
+          {roundGroups.length !== 2 ? (
+            <p className="text-sm text-neutral-500">
+              Needs exactly 2 teams for this round (found {roundGroups.length}) — set them up
+              in Admin → Matchups.
+            </p>
+          ) : (
+            (() => {
+              const toParA = scrambleToPar(data, round, course, roundGroups[0].id);
+              const toParB = scrambleToPar(data, round, course, roundGroups[1].id);
+              const holesA = scrambleHolesEntered(data, roundGroups[0].id);
+              const holesB = scrambleHolesEntered(data, roundGroups[1].id);
+              const winner =
+                toParA != null && toParB != null
+                  ? toParA < toParB
+                    ? "A"
+                    : toParB < toParA
+                      ? "B"
+                      : "T"
+                  : null;
+              const fmt = (v: number | null) =>
+                v == null ? "–" : v === 0 ? "E" : v > 0 ? `+${v}` : v;
+              return (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    { g: roundGroups[0], toPar: toParA, holes: holesA, side: "A" as const },
+                    { g: roundGroups[1], toPar: toParB, holes: holesB, side: "B" as const },
+                  ].map(({ g, toPar, holes, side }) => (
+                    <div
+                      key={g.id}
+                      className={`rounded-xl border p-3 ${
+                        winner === side
+                          ? "border-emerald-600 bg-emerald-500/10"
+                          : "border-neutral-800 bg-neutral-900/40"
+                      }`}
+                    >
+                      <p className="font-medium">{g.name}</p>
+                      <p className="text-2xl font-semibold">{fmt(toPar)}</p>
+                      <p className="text-xs text-neutral-500">Thru {holes}/18</p>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()
+          )}
+        </section>
       ) : !course ? (
         <p className="text-sm text-amber-400">No yardage data found for &quot;{round.course}&quot;.</p>
       ) : !hasHandicapData ? (

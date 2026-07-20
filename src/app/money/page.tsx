@@ -5,6 +5,7 @@ import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
 import { allHolesEntered, bestBallByHole, scoreMatch } from "@/lib/matchplay";
+import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
 import { Round } from "@/lib/types";
 
 type RoundPayoutResult = {
@@ -40,11 +41,11 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
   const membersB = membersOf(groups[1].id);
 
   if (round.format === "scramble") {
-    const scoreA = groups[0].team_score;
-    const scoreB = groups[1].team_score;
-    if (scoreA == null || scoreB == null) {
+    if (!scrambleComplete(data, groups[0].id) || !scrambleComplete(data, groups[1].id)) {
       return { round, status: "in-progress", winnerLabel: null, tied: false, perPlayer };
     }
+    const scoreA = scrambleTotal(data, groups[0].id)!;
+    const scoreB = scrambleTotal(data, groups[1].id)!;
     if (scoreA === scoreB) {
       for (const id of [...membersA, ...membersB]) perPlayer[id] = tie;
       return { round, status: "final", winnerLabel: null, tied: true, perPlayer };
@@ -95,6 +96,7 @@ export default function MoneyPage() {
       "groups",
       "group_members",
       "hole_scores",
+      "scramble_scores",
       "round_handicaps",
       "round_payouts",
       "money_settings",

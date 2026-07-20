@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { grossTotal, netScore } from "@/lib/scoring";
 import { effectiveHandicap } from "@/lib/handicap";
+import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
+import { COURSES } from "@/lib/courseData";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { Player, Round } from "@/lib/types";
 
@@ -81,7 +83,7 @@ export default function DashboardPage() {
   }, [load]);
 
   useRealtimeRefresh(
-    ["hole_scores", "players", "groups", "group_members", "round_handicaps"],
+    ["hole_scores", "scramble_scores", "players", "groups", "group_members", "round_handicaps"],
     load
   );
 
@@ -196,6 +198,7 @@ export default function DashboardPage() {
             const groups = data.groups
               .filter((g) => g.round_id === round.id)
               .sort((a, b) => a.sort_order - b.sort_order);
+            const course = round.course ? COURSES[round.course] : undefined;
             return (
               <div
                 key={round.id}
@@ -226,15 +229,22 @@ export default function DashboardPage() {
                             data.players.find((p) => p.id === m.player_id)?.name
                         )
                         .filter(Boolean);
+                      const toPar =
+                        round.format === "scramble"
+                          ? scrambleToPar(data, round, course, g.id)
+                          : null;
+                      const holesIn =
+                        round.format === "scramble" ? scrambleHolesEntered(data, g.id) : 0;
                       return (
                         <li key={g.id} className="flex justify-between">
                           <span>
                             <span className="text-neutral-500">{g.name}:</span>{" "}
                             {members.join(", ") || "—"}
                           </span>
-                          {round.format === "scramble" && g.team_score != null && (
+                          {round.format === "scramble" && toPar != null && (
                             <span className="font-medium text-neutral-100">
-                              {g.team_score}
+                              {toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar}
+                              <span className="text-neutral-500"> ({holesIn}/18)</span>
                             </span>
                           )}
                         </li>

@@ -6,6 +6,7 @@ import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { supabase } from "@/lib/supabase";
 import { COURSES, DEFAULT_TEE, TeeName, hasHandicapData } from "@/lib/courseData";
 import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@/lib/handicap";
+import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
 import { usePlayers } from "@/components/PlayerProvider";
 import { Player } from "@/lib/types";
 
@@ -54,7 +55,16 @@ export default function ScorecardPage() {
   }, [load]);
 
   useRealtimeRefresh(
-    ["rounds", "groups", "group_members", "carts", "cart_members", "hole_scores", "round_handicaps"],
+    [
+      "rounds",
+      "groups",
+      "group_members",
+      "carts",
+      "cart_members",
+      "hole_scores",
+      "scramble_scores",
+      "round_handicaps",
+    ],
     load
   );
 
@@ -72,7 +82,8 @@ export default function ScorecardPage() {
   const tee = (course?.tees.includes(round?.tee as TeeName) ? round?.tee : DEFAULT_TEE) as
     | TeeName
     | undefined;
-  const showHandicap = course ? hasHandicapData(course) : false;
+  const showHandicap =
+    round?.format === "individual" && course ? hasHandicapData(course) : false;
 
   async function setTee(value: string) {
     if (!round) return;
@@ -157,46 +168,13 @@ export default function ScorecardPage() {
     );
   }
 
-  const canEdit = Boolean(
-    round?.format === "individual" &&
-      group &&
-      currentPlayer &&
-      group.scorekeeper_id === currentPlayer.id
-  );
+  const canEdit = Boolean(group && currentPlayer && group.scorekeeper_id === currentPlayer.id);
 
-  async function saveScore(playerId: string, hole: number, raw: string) {
-    if (!round) return;
-    const trimmed = raw.trim();
-    if (trimmed !== "") {
-      const strokes = parseInt(trimmed, 10);
-      if (!Number.isFinite(strokes) || strokes <= 0) return;
-    }
-
-    const key = cellKey(round.id, playerId, hole);
+  async function saveWithStatus(key: string, action: () => Promise<{ error: unknown }>) {
     setCellStatus((prev) => ({ ...prev, [key]: "saving" }));
-
     try {
-      const result =
-        trimmed === ""
-          ? await supabase
-              .from("hole_scores")
-              .delete()
-              .eq("round_id", round.id)
-              .eq("player_id", playerId)
-              .eq("hole", hole)
-          : await supabase.from("hole_scores").upsert(
-              { round_id: round.id, player_id: playerId, hole, strokes: parseInt(trimmed, 10) },
-              { onConflict: "round_id,player_id,hole" }
-            );
-
+      const result = await action();
       if (result.error) throw result.error;
-
-      if (trimmed !== "") {
-        const player = data!.players.find((p) => p.id === playerId);
-        if (player) {
-          await lockRoundHandicapIfNeeded(round.id, playerId, player.handicap);
-        }
-      }
 
       setCellStatus((prev) => ({ ...prev, [key]: "saved" }));
       setTimeout(() => {
@@ -211,6 +189,63 @@ export default function ScorecardPage() {
     } catch {
       setCellStatus((prev) => ({ ...prev, [key]: "error" }));
     }
+  }
+
+  async function saveScore(playerId: string, hole: number, raw: string) {
+    if (!round) return;
+    const trimmed = raw.trim();
+    if (trimmed !== "") {
+      const strokes = parseInt(trimmed, 10);
+      if (!Number.isFinite(strokes) || strokes <= 0) return;
+    }
+
+    const key = cellKey(round.id, playerId, hole);
+    await saveWithStatus(key, async () => {
+      const result =
+        trimmed === ""
+          ? await supabase
+              .from("hole_scores")
+              .delete()
+              .eq("round_id", round.id)
+              .eq("player_id", playerId)
+              .eq("hole", hole)
+          : await supabase.from("hole_scores").upsert(
+              { round_id: round.id, player_id: playerId, hole, strokes: parseInt(trimmed, 10) },
+              { onConflict: "round_id,player_id,hole" }
+            );
+
+      if (!result.error && trimmed !== "") {
+        const player = data!.players.find((p) => p.id === playerId);
+        if (player) {
+          await lockRoundHandicapIfNeeded(round.id, playerId, player.handicap);
+        }
+      }
+      return result;
+    });
+  }
+
+  async function saveScrambleScore(groupId: string, hole: number, raw: string) {
+    if (!round) return;
+    const trimmed = raw.trim();
+    if (trimmed !== "") {
+      const strokes = parseInt(trimmed, 10);
+      if (!Number.isFinite(strokes) || strokes <= 0) return;
+    }
+
+    const key = cellKey(round.id, groupId, hole);
+    await saveWithStatus(key, async () =>
+      trimmed === ""
+        ? await supabase
+            .from("scramble_scores")
+            .delete()
+            .eq("round_id", round.id)
+            .eq("group_id", groupId)
+            .eq("hole", hole)
+        : await supabase.from("scramble_scores").upsert(
+            { round_id: round.id, group_id: groupId, hole, strokes: parseInt(trimmed, 10) },
+            { onConflict: "group_id,hole" }
+          )
+    );
   }
 
   function sumGross(playerId: string, holes: number[]) {
@@ -240,6 +275,14 @@ export default function ScorecardPage() {
   function sumPar(holes: number[]) {
     if (!course) return null;
     return holes.reduce((sum, h) => sum + (holeInfo(h)?.par ?? 0), 0);
+  }
+
+  function scrambleTotalFor(holes: number[]) {
+    if (!group) return null;
+    const vals = holes
+      .map((h) => scrambleStrokesFor(data!, group.id, h))
+      .filter((v): v is number => v != null);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
   }
 
   return (
@@ -321,7 +364,7 @@ export default function ScorecardPage() {
             </p>
           )}
 
-          {round.format === "individual" && group && (
+          {group && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 px-3 py-2 text-sm">
               <div>
                 {group.scorekeeper_id ? (
@@ -362,17 +405,28 @@ export default function ScorecardPage() {
             <p className="text-xs text-neutral-500">{cartLabel()}</p>
           )}
 
-          {course && group && round.format === "scramble" && (
+          {group && round.format === "scramble" && (
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3">
               <p className="font-medium">{group.name}</p>
               <p className="text-sm text-neutral-400">
                 {members.map((m) => m.name).join(", ") || "No players assigned"}
               </p>
-              {group.team_score != null && (
-                <p className="mt-1 text-sm text-neutral-300">
-                  Team score: <span className="font-medium">{group.team_score}</span>
-                </p>
-              )}
+              <p className="mt-1 text-sm text-neutral-300">
+                Thru {scrambleHolesEntered(data, group.id)}/18
+                {(() => {
+                  const toPar = scrambleToPar(data, round, course, group.id);
+                  if (toPar == null) return null;
+                  return (
+                    <>
+                      {" · "}
+                      <span className="font-medium">
+                        {toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar}
+                      </span>{" "}
+                      to par
+                    </>
+                  );
+                })()}
+              </p>
             </div>
           )}
 
@@ -571,6 +625,59 @@ export default function ScorecardPage() {
                       </Fragment>
                       );
                     })}
+
+                  {round.format === "scramble" && group && (
+                    <tr className="border-t border-neutral-800">
+                      <td className={cellClass("text-left sticky left-0 bg-neutral-950 font-medium")}>
+                        {group.name}
+                      </td>
+                      {FRONT.map((h) => {
+                        const val = scrambleStrokesFor(data, group.id, h);
+                        const status = round ? cellStatus[cellKey(round.id, group.id, h)] : undefined;
+                        return (
+                          <td key={h} className={cellClass(statusRing(status))}>
+                            {canEdit ? (
+                              <input
+                                defaultValue={val ?? ""}
+                                onBlur={(e) => saveScrambleScore(group.id, h, e.target.value)}
+                                inputMode="numeric"
+                                className="w-8 bg-transparent text-center outline-none"
+                              />
+                            ) : (
+                              val ?? "–"
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className={cellClass("font-semibold")}>
+                        {scrambleTotalFor(FRONT) ?? "–"}
+                      </td>
+                      {BACK.map((h) => {
+                        const val = scrambleStrokesFor(data, group.id, h);
+                        const status = round ? cellStatus[cellKey(round.id, group.id, h)] : undefined;
+                        return (
+                          <td key={h} className={cellClass(statusRing(status))}>
+                            {canEdit ? (
+                              <input
+                                defaultValue={val ?? ""}
+                                onBlur={(e) => saveScrambleScore(group.id, h, e.target.value)}
+                                inputMode="numeric"
+                                className="w-8 bg-transparent text-center outline-none"
+                              />
+                            ) : (
+                              val ?? "–"
+                            )}
+                          </td>
+                        );
+                      })}
+                      <td className={cellClass("font-semibold")}>
+                        {scrambleTotalFor(BACK) ?? "–"}
+                      </td>
+                      <td className={cellClass("font-semibold")}>
+                        {scrambleTotalFor([...FRONT, ...BACK]) ?? "–"}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

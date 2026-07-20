@@ -63,6 +63,21 @@ create table if not exists hole_scores (
   unique (round_id, player_id, hole)
 );
 
+-- Hole-by-hole gross scores for a scramble team (one shared score per hole
+-- for the whole group, entered by that group's scorekeeper — see
+-- groups.scorekeeper_id, which is reused for both individual and scramble
+-- rounds). No handicap applies; groups.team_score is superseded by this and
+-- no longer written to by the app.
+create table if not exists scramble_scores (
+  id uuid primary key default gen_random_uuid(),
+  round_id uuid not null references rounds(id) on delete cascade,
+  group_id uuid not null references groups(id) on delete cascade,
+  hole int not null check (hole between 1 and 18),
+  strokes int not null check (strokes > 0),
+  updated_at timestamptz not null default now(),
+  unique (group_id, hole)
+);
+
 -- A player's handicap "locked in" for one specific round. Auto-created with
 -- whatever players.handicap was at the moment of that player's first score
 -- entry in the round (see lib/handicap.ts), so later changes to a player's
@@ -129,6 +144,7 @@ alter table group_members enable row level security;
 alter table carts enable row level security;
 alter table cart_members enable row level security;
 alter table hole_scores enable row level security;
+alter table scramble_scores enable row level security;
 alter table round_handicaps enable row level security;
 alter table round_payouts enable row level security;
 alter table money_settings enable row level security;
@@ -153,6 +169,9 @@ create policy "public_all_cart_members" on cart_members for all using (true) wit
 
 drop policy if exists "public_all_hole_scores" on hole_scores;
 create policy "public_all_hole_scores" on hole_scores for all using (true) with check (true);
+
+drop policy if exists "public_all_scramble_scores" on scramble_scores;
+create policy "public_all_scramble_scores" on scramble_scores for all using (true) with check (true);
 
 drop policy if exists "public_all_round_handicaps" on round_handicaps;
 create policy "public_all_round_handicaps" on round_handicaps for all using (true) with check (true);

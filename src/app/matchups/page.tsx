@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { grossTotal, netScore } from "@/lib/scoring";
+import { effectiveHandicap } from "@/lib/handicap";
+import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
+import { COURSES } from "@/lib/courseData";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 
 export default function MatchupsPage() {
@@ -16,7 +19,10 @@ export default function MatchupsPage() {
     load();
   }, [load]);
 
-  useRealtimeRefresh(["groups", "group_members", "hole_scores"], load);
+  useRealtimeRefresh(
+    ["groups", "group_members", "hole_scores", "scramble_scores", "round_handicaps"],
+    load
+  );
 
   if (!data) return <p className="text-neutral-400">Loading…</p>;
 
@@ -30,6 +36,7 @@ export default function MatchupsPage() {
         const groups = data.groups
           .filter((g) => g.round_id === round.id)
           .sort((a, b) => a.sort_order - b.sort_order);
+        const course = round.course ? COURSES[round.course] : undefined;
 
         return (
           <section key={round.id}>
@@ -66,6 +73,12 @@ export default function MatchupsPage() {
                   const members = memberIds
                     .map((id) => data.players.find((p) => p.id === id))
                     .filter((p): p is NonNullable<typeof p> => Boolean(p));
+                  const toPar =
+                    round.format === "scramble"
+                      ? scrambleToPar(data, round, course, g.id)
+                      : null;
+                  const holesIn =
+                    round.format === "scramble" ? scrambleHolesEntered(data, g.id) : 0;
 
                   return (
                     <div
@@ -76,7 +89,9 @@ export default function MatchupsPage() {
                         <span className="font-medium">{g.name}</span>
                         {round.format === "scramble" && (
                           <span className="text-sm text-neutral-300">
-                            {g.team_score != null ? `Score: ${g.team_score}` : "No score yet"}
+                            {toPar != null
+                              ? `${toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar} (${holesIn}/18)`
+                              : "No score yet"}
                           </span>
                         )}
                       </div>
@@ -89,12 +104,18 @@ export default function MatchupsPage() {
                             (s) => s.round_id === round.id && s.player_id === p.id
                           );
                           const gross = scores.length ? grossTotal(scores) : null;
+                          const hcp = effectiveHandicap(
+                            p.id,
+                            p.handicap,
+                            round.id,
+                            data.roundHandicaps
+                          );
                           return (
                             <li key={p.id} className="flex justify-between">
                               <span>{p.name}</span>
                               <span className="text-neutral-500">
                                 {gross != null
-                                  ? `${netScore(gross, p.handicap)} net (${scores.length}/18)`
+                                  ? `${netScore(gross, hcp)} net (${scores.length}/18)`
                                   : "–"}
                               </span>
                             </li>

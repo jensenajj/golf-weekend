@@ -10,6 +10,7 @@ import {
   Round,
   RoundHandicap,
   RoundPayout,
+  ScrambleScore,
 } from "./types";
 
 export type FullData = {
@@ -20,6 +21,7 @@ export type FullData = {
   carts: Cart[];
   cartMembers: CartMember[];
   holeScores: HoleScore[];
+  scrambleScores: ScrambleScore[];
   roundHandicaps: RoundHandicap[];
   roundPayouts: RoundPayout[];
   moneySettings: MoneySettings | null;
@@ -33,6 +35,7 @@ const EMPTY: FullData = {
   carts: [],
   cartMembers: [],
   holeScores: [],
+  scrambleScores: [],
   roundHandicaps: [],
   roundPayouts: [],
   moneySettings: null,
@@ -48,6 +51,7 @@ export async function fetchAll(): Promise<FullData> {
       carts,
       cartMembers,
       holeScores,
+      scrambleScores,
       roundHandicaps,
       roundPayouts,
       moneySettings,
@@ -59,6 +63,7 @@ export async function fetchAll(): Promise<FullData> {
       supabase.from("carts").select("*").order("sort_order"),
       supabase.from("cart_members").select("*"),
       supabase.from("hole_scores").select("*"),
+      supabase.from("scramble_scores").select("*"),
       supabase.from("round_handicaps").select("*"),
       supabase.from("round_payouts").select("*"),
       supabase.from("money_settings").select("*").eq("id", "default").maybeSingle(),
@@ -72,6 +77,7 @@ export async function fetchAll(): Promise<FullData> {
       carts: carts.data ?? [],
       cartMembers: cartMembers.data ?? [],
       holeScores: holeScores.data ?? [],
+      scrambleScores: scrambleScores.data ?? [],
       roundHandicaps: roundHandicaps.data ?? [],
       roundPayouts: roundPayouts.data ?? [],
       moneySettings: moneySettings.data ?? null,

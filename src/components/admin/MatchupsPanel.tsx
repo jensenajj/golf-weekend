@@ -62,15 +62,6 @@ export function MatchupsPanel() {
     load();
   }
 
-  async function setTeamScore(id: string, value: string) {
-    const score = value === "" ? null : Number(value);
-    await supabase
-      .from("groups")
-      .update({ team_score: Number.isFinite(score as number) ? score : null })
-      .eq("id", id);
-    load();
-  }
-
   async function setScorekeeper(groupId: string, playerId: string) {
     await supabase
       .from("groups")
@@ -199,15 +190,6 @@ export function MatchupsPanel() {
                       onBlur={(e) => renameGroup(g.id, e.target.value)}
                       className="flex-1 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm font-medium"
                     />
-                    {round.format === "scramble" && (
-                      <input
-                        defaultValue={g.team_score ?? ""}
-                        onBlur={(e) => setTeamScore(g.id, e.target.value)}
-                        placeholder="Score"
-                        inputMode="numeric"
-                        className="w-20 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-center"
-                      />
-                    )}
                     <button
                       onClick={() => deleteGroup(g.id)}
                       className="text-sm text-red-400 hover:text-red-300"
@@ -234,24 +216,24 @@ export function MatchupsPanel() {
                     })}
                   </div>
 
+                  <label className="flex items-center gap-2 text-xs text-neutral-400">
+                    Scorekeeper
+                    <select
+                      value={g.scorekeeper_id ?? ""}
+                      onChange={(e) => setScorekeeper(g.id, e.target.value)}
+                      className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100"
+                    >
+                      <option value="">None yet</option>
+                      {groupMembers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
                   {round.format === "individual" && (
                     <>
-                      <label className="flex items-center gap-2 text-xs text-neutral-400">
-                        Scorekeeper
-                        <select
-                          value={g.scorekeeper_id ?? ""}
-                          onChange={(e) => setScorekeeper(g.id, e.target.value)}
-                          className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-100"
-                        >
-                          <option value="">None yet</option>
-                          {groupMembers.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
                       <div className="space-y-1.5 border-t border-neutral-800 pt-2">
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-medium text-neutral-500">Carts</p>

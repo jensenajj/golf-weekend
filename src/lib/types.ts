@@ -53,6 +53,15 @@ export type HoleScore = {
   updated_at: string;
 };
 
+export type ScrambleScore = {
+  id: string;
+  round_id: string;
+  group_id: string;
+  hole: number;
+  strokes: number;
+  updated_at: string;
+};
+
 export type RoundHandicap = {
   round_id: string;
   player_id: string;
