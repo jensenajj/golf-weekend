@@ -4,9 +4,54 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { grossTotal, netScore } from "@/lib/scoring";
 import { effectiveHandicap } from "@/lib/handicap";
-import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
+import { scrambleToPar } from "@/lib/scramble";
+import { roundTeams } from "@/lib/singlesMatch";
 import { COURSES } from "@/lib/courseData";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
+import { Group, Team } from "@/lib/types";
+
+type Side = "A" | "B" | null;
+
+// Team A always reads blue, Team B always reads red -- same convention
+// used on Scorecard/Games, so team membership reads consistently everywhere.
+function sideColor(side: Side): string {
+  if (side === "A") return "text-sky-400";
+  if (side === "B") return "text-red-400";
+  return "";
+}
+
+// For team-format rounds (Singles/Cart Pairs), the on-course groups mix
+// both teams together, so a group itself isn't "one side" -- only
+// individual players are. Otherwise (plain individual or scramble), the
+// two groups ARE the two sides.
+function groupSide(roundGroups: Group[], teamsForRound: Team[], g: { id: string }): Side {
+  if (teamsForRound.length === 2) return null;
+  const idx = roundGroups.findIndex((rg) => rg.id === g.id);
+  return idx === 0 ? "A" : idx === 1 ? "B" : null;
+}
+
+function playerSide(
+  data: FullData,
+  roundGroups: Group[],
+  teamsForRound: Team[],
+  group: { id: string },
+  playerId: string
+): Side {
+  if (teamsForRound.length === 2) {
+    if (
+      data.teamMembers.some((m) => m.team_id === teamsForRound[0].id && m.player_id === playerId)
+    ) {
+      return "A";
+    }
+    if (
+      data.teamMembers.some((m) => m.team_id === teamsForRound[1].id && m.player_id === playerId)
+    ) {
+      return "B";
+    }
+    return null;
+  }
+  return groupSide(roundGroups, teamsForRound, group);
+}
 
 export default function MatchupsPage() {
   const [data, setData] = useState<FullData | null>(null);
@@ -20,7 +65,15 @@ export default function MatchupsPage() {
   }, [load]);
 
   useRealtimeRefresh(
-    ["groups", "group_members", "hole_scores", "scramble_scores", "round_handicaps"],
+    [
+      "groups",
+      "group_members",
+      "teams",
+      "team_members",
+      "hole_scores",
+      "scramble_scores",
+      "round_handicaps",
+    ],
     load
   );
 
@@ -36,6 +89,7 @@ export default function MatchupsPage() {
         const groups = data.groups
           .filter((g) => g.round_id === round.id)
           .sort((a, b) => a.sort_order - b.sort_order);
+        const teamsForRound = roundTeams(data, round.id);
         const course = round.course ? COURSES[round.course] : undefined;
 
         return (
@@ -77,8 +131,6 @@ export default function MatchupsPage() {
                     round.format === "scramble"
                       ? scrambleToPar(data, round, course, g.id)
                       : null;
-                  const holesIn =
-                    round.format === "scramble" ? scrambleHolesEntered(data, g.id) : 0;
 
                   return (
                     <div
@@ -86,19 +138,38 @@ export default function MatchupsPage() {
                       className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3"
                     >
                       <div className="mb-2 flex items-center justify-between">
-                        <span className="font-medium">{g.name}</span>
+                        <span className={`font-medium ${sideColor(groupSide(groups, teamsForRound, g))}`}>
+                          {g.name}
+                        </span>
                         {round.format === "scramble" && (
                           <span className="text-sm text-neutral-300">
                             {toPar != null
-                              ? `${toPar === 0 ? "E" : toPar > 0 ? `+${toPar}` : toPar} (${holesIn}/18)`
+                              ? toPar === 0
+                                ? "E"
+                                : toPar > 0
+                                  ? `+${toPar}`
+                                  : toPar
                               : "No score yet"}
                           </span>
                         )}
                       </div>
+                      {round.format === "individual" && (
+                        <div className="mb-1 flex justify-between text-xs uppercase tracking-wide text-neutral-500">
+                          <span>Player</span>
+                          <span>Gross / Net</span>
+                        </div>
+                      )}
                       <ul className="space-y-1 text-sm text-neutral-300">
                         {members.map((p) => {
+                          const nameClass = sideColor(
+                            playerSide(data, groups, teamsForRound, g, p.id)
+                          );
                           if (round.format !== "individual") {
-                            return <li key={p.id}>{p.name}</li>;
+                            return (
+                              <li key={p.id} className={nameClass}>
+                                {p.name}
+                              </li>
+                            );
                           }
                           const scores = data.holeScores.filter(
                             (s) => s.round_id === round.id && s.player_id === p.id
@@ -112,11 +183,9 @@ export default function MatchupsPage() {
                           );
                           return (
                             <li key={p.id} className="flex justify-between">
-                              <span>{p.name}</span>
+                              <span className={nameClass}>{p.name}</span>
                               <span className="text-neutral-500">
-                                {gross != null
-                                  ? `${netScore(gross, hcp)} net (${scores.length}/18)`
-                                  : "–"}
+                                {gross != null ? `${gross}/${netScore(gross, hcp)}` : "–"}
                               </span>
                             </li>
                           );
