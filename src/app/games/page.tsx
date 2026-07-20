@@ -8,6 +8,28 @@ import { MatchSide, bestBallByHole, scoreMatch } from "@/lib/matchplay";
 import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
 import { HOLES } from "@/lib/types";
 
+// Players are already sorted by name (see fetchAll), so filtering preserves
+// that order without needing a separate sort here.
+function memberNames(data: FullData, playerIds: string[]): string[] {
+  return data.players.filter((p) => playerIds.includes(p.id)).map((p) => p.name);
+}
+
+function groupLabel(data: FullData, group: { id: string; name: string }): string {
+  const names = memberNames(
+    data,
+    data.groupMembers.filter((m) => m.group_id === group.id).map((m) => m.player_id)
+  );
+  return names.length > 0 ? names.join(", ") : group.name;
+}
+
+function cartLabel(data: FullData, cart: { id: string; name: string }): string {
+  const names = memberNames(
+    data,
+    data.cartMembers.filter((m) => m.cart_id === cart.id).map((m) => m.player_id)
+  );
+  return names.length > 0 ? names.join("/") : cart.name;
+}
+
 function MatchTable({ a, b }: { a: MatchSide; b: MatchSide }) {
   const result = scoreMatch(a, b);
   return (
@@ -160,7 +182,7 @@ export default function GamesPage() {
                           : "border-neutral-800 bg-neutral-900/40"
                       }`}
                     >
-                      <p className="font-medium">{g.name}</p>
+                      <p className="font-medium">{groupLabel(data, g)}</p>
                       <p className="text-2xl font-semibold">{fmt(toPar)}</p>
                       <p className="text-xs text-neutral-500">Thru {holes}/18</p>
                     </div>
@@ -190,7 +212,7 @@ export default function GamesPage() {
             ) : (
               <MatchTable
                 a={{
-                  label: roundGroups[0].name,
+                  label: groupLabel(data, roundGroups[0]),
                   byHole: bestBallByHole(
                     data,
                     round,
@@ -202,7 +224,7 @@ export default function GamesPage() {
                   ),
                 }}
                 b={{
-                  label: roundGroups[1].name,
+                  label: groupLabel(data, roundGroups[1]),
                   byHole: bestBallByHole(
                     data,
                     round,
@@ -227,7 +249,7 @@ export default function GamesPage() {
                 .sort((a, b) => a.sort_order - b.sort_order);
               return (
                 <div key={g.id} className="space-y-1.5">
-                  <p className="text-sm font-medium text-neutral-300">{g.name}</p>
+                  <p className="text-sm font-medium text-neutral-300">{groupLabel(data, g)}</p>
                   {groupCarts.length !== 2 ? (
                     <p className="text-sm text-neutral-500">
                       Needs exactly 2 carts (found {groupCarts.length}) — assign them in
@@ -236,7 +258,7 @@ export default function GamesPage() {
                   ) : (
                     <MatchTable
                       a={{
-                        label: groupCarts[0].name,
+                        label: cartLabel(data, groupCarts[0]),
                         byHole: bestBallByHole(
                           data,
                           round,
@@ -248,7 +270,7 @@ export default function GamesPage() {
                         ),
                       }}
                       b={{
-                        label: groupCarts[1].name,
+                        label: cartLabel(data, groupCarts[1]),
                         byHole: bestBallByHole(
                           data,
                           round,
