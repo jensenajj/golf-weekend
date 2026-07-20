@@ -9,7 +9,7 @@ import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@
 import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { usePlayers } from "@/components/PlayerProvider";
-import { Group, Player } from "@/lib/types";
+import { Group, HOLES, Player } from "@/lib/types";
 
 const FRONT = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 const BACK = [10, 11, 12, 13, 14, 15, 16, 17, 18];
@@ -41,12 +41,170 @@ function cellKey(roundId: string, playerId: string, hole: number) {
   return `${roundId}:${playerId}:${hole}`;
 }
 
+type HoleEntryRow = { id: string; label: string };
+
+function HoleEntryModal({
+  title,
+  rows,
+  holeInfo,
+  getScore,
+  onSave,
+  onClose,
+}: {
+  title: string;
+  rows: HoleEntryRow[];
+  holeInfo: (hole: number) => { par: number } | undefined;
+  getScore: (rowId: string, hole: number) => number | null;
+  onSave: (rowId: string, hole: number, value: number) => void;
+  onClose: () => void;
+}) {
+  // Keyed `${hole}:${rowId}`. Once a hole's rows are loaded into this cache
+  // they're the source of truth for the rest of the modal session — we never
+  // re-derive from getScore() again, since that reads the parent's `data`
+  // state, which only catches up with our own saves after an async
+  // save-then-refetch round trip. Re-deriving on every hole visit created a
+  // race: navigate back to an already-saved hole before that round trip
+  // finishes, and its stale value would get silently re-saved on close.
+  function loadHole(values: Record<string, number>, h: number) {
+    let next = values;
+    for (const r of rows) {
+      const k = `${h}:${r.id}`;
+      if (!(k in next)) {
+        if (next === values) next = { ...values };
+        next[k] = getScore(r.id, h) ?? holeInfo(h)?.par ?? 4;
+      }
+    }
+    return next;
+  }
+
+  const initialHole = HOLES.find((h) => rows.some((r) => getScore(r.id, h) == null)) ?? HOLES[0];
+  const [hole, setHole] = useState(initialHole);
+  const [values, setValues] = useState<Record<string, number>>(() => loadHole({}, initialHole));
+
+  function commitHole(h: number, snapshot: Record<string, number>) {
+    for (const r of rows) {
+      const k = `${h}:${r.id}`;
+      if (k in snapshot) onSave(r.id, h, snapshot[k]);
+    }
+  }
+
+  function goTo(nextHole: number) {
+    commitHole(hole, values);
+    const clamped = Math.min(Math.max(nextHole, HOLES[0]), HOLES[HOLES.length - 1]);
+    setValues((prev) => loadHole(prev, clamped));
+    setHole(clamped);
+  }
+
+  function adjust(rowId: string, delta: number) {
+    const k = `${hole}:${rowId}`;
+    setValues((prev) => ({
+      ...prev,
+      [k]: Math.max(1, (prev[k] ?? holeInfo(hole)?.par ?? 4) + delta),
+    }));
+  }
+
+  const par = holeInfo(hole)?.par;
+  const isLast = hole === HOLES[HOLES.length - 1];
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-neutral-950">
+      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+        <button
+          onClick={() => goTo(hole - 1)}
+          disabled={hole === HOLES[0]}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-800 text-lg disabled:opacity-30"
+        >
+          ‹
+        </button>
+        <div className="text-center">
+          <p className="text-xs uppercase tracking-wide text-neutral-500">{title}</p>
+          <p className="text-lg font-semibold">
+            Hole {hole} <span className="font-normal text-neutral-500">· Par {par ?? "–"}</span>
+          </p>
+        </div>
+        <button
+          onClick={() => goTo(hole + 1)}
+          disabled={isLast}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-800 text-lg disabled:opacity-30"
+        >
+          ›
+        </button>
+      </div>
+
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+        {rows.map((r) => {
+          const value = values[`${hole}:${r.id}`] ?? par ?? 4;
+          const diff = par != null ? value - par : null;
+          return (
+            <div
+              key={r.id}
+              className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/60 px-4 py-3"
+            >
+              <div>
+                <p className="font-medium">{r.label}</p>
+                {diff != null && (
+                  <p className="text-xs text-neutral-500">
+                    {diff === 0 ? "Par" : diff > 0 ? `+${diff}` : diff}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => adjust(r.id, -1)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-800 text-xl font-semibold active:bg-neutral-700"
+                >
+                  −
+                </button>
+                <span className="w-6 text-center text-2xl font-semibold tabular-nums">
+                  {value}
+                </span>
+                <button
+                  onClick={() => adjust(r.id, 1)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-800 text-xl font-semibold active:bg-neutral-700"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="border-t border-neutral-800 px-4 py-3">
+        <button
+          onClick={() => {
+            if (isLast) {
+              commitHole(hole, values);
+              onClose();
+            } else {
+              goTo(hole + 1);
+            }
+          }}
+          className="w-full rounded-full bg-emerald-600 py-3 text-base font-semibold text-white"
+        >
+          {isLast ? "Save & Finish" : "Save & Next Hole →"}
+        </button>
+        <button
+          onClick={() => {
+            commitHole(hole, values);
+            onClose();
+          }}
+          className="mt-2 w-full text-center text-sm text-neutral-500"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ScorecardPage() {
   const { currentPlayer } = usePlayers();
   const [data, setData] = useState<FullData | null>(null);
   const [roundId, setRoundId] = useState<string | null>(null);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [cellStatus, setCellStatus] = useState<Record<string, CellStatus>>({});
+  const [holeEntryOpen, setHoleEntryOpen] = useState(false);
 
   const load = useCallback(() => {
     fetchAll().then((d) => {
@@ -314,6 +472,7 @@ export default function ScorecardPage() {
             onClick={() => {
               setRoundId(r.id);
               setGroupId(null);
+              setHoleEntryOpen(false);
             }}
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium ${
               roundId === r.id
@@ -365,7 +524,10 @@ export default function ScorecardPage() {
               {roundGroups.map((g) => (
                 <button
                   key={g.id}
-                  onClick={() => setGroupId(g.id)}
+                  onClick={() => {
+                    setGroupId(g.id);
+                    setHoleEntryOpen(false);
+                  }}
                   className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium ${
                     group?.id === g.id
                       ? "bg-emerald-600 text-white"
@@ -489,6 +651,48 @@ export default function ScorecardPage() {
                 );
               })}
             </div>
+          )}
+
+          {course && round.format === "individual" && canEdit && members.length > 0 && (
+            <button
+              onClick={() => setHoleEntryOpen(true)}
+              className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white"
+            >
+              Add hole scores
+            </button>
+          )}
+
+          {course && round.format === "scramble" && roundGroups.some((g) => canEditGroup(g)) && (
+            <button
+              onClick={() => setHoleEntryOpen(true)}
+              className="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white"
+            >
+              Add hole scores
+            </button>
+          )}
+
+          {course && holeEntryOpen && round.format === "individual" && group && (
+            <HoleEntryModal
+              title={`${round.label} · ${group.name}`}
+              rows={members.map((m) => ({ id: m.id, label: m.name }))}
+              holeInfo={holeInfo}
+              getScore={(id, h) => strokesFor(id, h)}
+              onSave={(id, h, v) => saveScore(id, h, String(v))}
+              onClose={() => setHoleEntryOpen(false)}
+            />
+          )}
+
+          {course && holeEntryOpen && round.format === "scramble" && (
+            <HoleEntryModal
+              title={round.label}
+              rows={roundGroups
+                .filter((g) => canEditGroup(g))
+                .map((g) => ({ id: g.id, label: g.name }))}
+              holeInfo={holeInfo}
+              getScore={(id, h) => scrambleStrokesFor(data, id, h)}
+              onSave={(id, h, v) => saveScrambleScore(id, h, String(v))}
+              onClose={() => setHoleEntryOpen(false)}
+            />
           )}
 
           {round.format === "individual" && !showHandicap && (
