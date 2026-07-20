@@ -85,3 +85,34 @@ export function allHolesEntered(data: FullData, roundId: string, playerIds: stri
     )
   );
 }
+
+// Total of a bestBallByHole(...) result across whichever holes have a
+// value — the plain stroke total behind a "lowest score wins" comparison.
+export function sumByHole(byHole: (number | null)[]): number | null {
+  const vals = byHole.filter((v): v is number => v != null);
+  return vals.length > 0 ? vals.reduce((sum, v) => sum + v, 0) : null;
+}
+
+// A best-N-of-M team score (see bestBallByHole) expressed relative to par,
+// with par multiplied by N per hole -- e.g. for N=2, an 8 on a par 4 (two
+// players' net 4s) is even for the hole, not +4.
+export function teamScoreToPar(
+  byHole: (number | null)[],
+  course: CourseData | undefined,
+  n: number
+): { toPar: number | null; thru: number } {
+  if (!course) return { toPar: null, thru: 0 };
+  let total = 0;
+  let parSum = 0;
+  let thru = 0;
+  HOLES.forEach((h, i) => {
+    const val = byHole[i];
+    if (val == null) return;
+    const par = course.holes.find((c) => c.hole === h)?.par;
+    if (par == null) return;
+    total += val;
+    parSum += par * n;
+    thru += 1;
+  });
+  return { toPar: thru > 0 ? total - parSum : null, thru };
+}

@@ -9,7 +9,7 @@ import { effectiveHandicap, lockRoundHandicapIfNeeded, strokesReceived } from "@
 import { scrambleHolesEntered, scrambleStrokesFor, scrambleToPar } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { rankedTeamMembers, roundTeams } from "@/lib/singlesMatch";
-import { bestBallByHole, netFor, scoreMatch } from "@/lib/matchplay";
+import { bestBallByHole, netFor, scoreMatch, teamScoreToPar } from "@/lib/matchplay";
 import { usePlayers } from "@/components/PlayerProvider";
 import { Group, HOLES, Player } from "@/lib/types";
 
@@ -608,26 +608,6 @@ export default function ScorecardPage() {
     return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) : null;
   }
 
-  // Team score relative to par, but with par doubled per hole -- since the
-  // team score is the sum of two players' net scores, an 8 on a par 4 (two
-  // net 4s) is even par for the hole, not +4.
-  function teamToPar(byHole: (number | null)[]): { toPar: number | null; thru: number } {
-    if (!course) return { toPar: null, thru: 0 };
-    let total = 0;
-    let parSum = 0;
-    let thru = 0;
-    HOLES.forEach((h, i) => {
-      const val = byHole[i];
-      if (val == null) return;
-      const par = holeInfo(h)?.par;
-      if (par == null) return;
-      total += val;
-      parSum += par * 2;
-      thru += 1;
-    });
-    return { toPar: thru > 0 ? total - parSum : null, thru };
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex gap-2 overflow-x-auto">
@@ -709,7 +689,7 @@ export default function ScorecardPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               {roundGroups.map((g) => {
                 const ids = membersOf(g).map((m) => m.id);
-                const { toPar, thru } = teamToPar(teamNetByHole(ids));
+                const { toPar, thru } = teamScoreToPar(teamNetByHole(ids), course, 2);
                 return (
                   <div
                     key={g.id}

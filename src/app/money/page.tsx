@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
-import { allHolesEntered, bestBallByHole, scoreMatch } from "@/lib/matchplay";
+import { allHolesEntered, bestBallByHole, sumByHole } from "@/lib/matchplay";
 import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { computeLowNet, computeWeekendLowNet } from "@/lib/lowNet";
@@ -131,7 +131,9 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
     return { round, status: "final", winnerIds: winners, tied: false, perPlayer };
   }
 
-  // individual round: Group vs Group best-2-net-balls-of-4
+  // individual round: Group vs Group, best 2 net balls of 4 -- the team
+  // with the lower total score (summed across all 18 holes) wins, same
+  // total shown on the Scorecard's "Team Score" row and Games' team cards.
   const course = round.course ? COURSES[round.course] : undefined;
   const hasHandicapData = course ? course.holes.every((h) => h.handicap != null) : false;
   if (!course || !hasHandicapData) {
@@ -140,15 +142,13 @@ function computeRoundPayout(data: FullData, round: Round): RoundPayoutResult {
   if (!allHolesEntered(data, round.id, [...membersA, ...membersB])) {
     return { round, status: "in-progress", winnerIds: [], tied: false, perPlayer };
   }
-  const result = scoreMatch(
-    { label: groups[0].name, byHole: bestBallByHole(data, round, course, membersA, 2) },
-    { label: groups[1].name, byHole: bestBallByHole(data, round, course, membersB, 2) }
-  );
-  if (result.ptsA === result.ptsB) {
+  const totalA = sumByHole(bestBallByHole(data, round, course, membersA, 2))!;
+  const totalB = sumByHole(bestBallByHole(data, round, course, membersB, 2))!;
+  if (totalA === totalB) {
     for (const id of [...membersA, ...membersB]) perPlayer[id] = tie;
     return { round, status: "final", winnerIds: [], tied: true, perPlayer };
   }
-  const winners = result.ptsA > result.ptsB ? membersA : membersB;
+  const winners = totalA < totalB ? membersA : membersB;
   for (const id of winners) perPlayer[id] = win;
   return { round, status: "final", winnerIds: winners, tied: false, perPlayer };
 }

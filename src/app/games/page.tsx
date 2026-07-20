@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchAll, FullData } from "@/lib/data";
 import { useRealtimeRefresh } from "@/lib/useRealtimeRefresh";
 import { COURSES } from "@/lib/courseData";
-import { MatchSide, bestBallByHole, netFor, scoreMatch } from "@/lib/matchplay";
+import { MatchSide, bestBallByHole, netFor, scoreMatch, teamScoreToPar } from "@/lib/matchplay";
 import { scrambleHolesEntered, scrambleToPar } from "@/lib/scramble";
 import { RANK_LABELS, computeSinglesMatch, rankedTeamMembers, roundTeams } from "@/lib/singlesMatch";
 import { computeCartPairsMatch, teamSlot } from "@/lib/cartPairsMatch";
@@ -382,7 +382,7 @@ export default function GamesPage() {
               })()}
             </section>
           ) : (
-            <section className="space-y-2">
+            <section className="space-y-3">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">
                 Group vs Group — best 2 net balls of 4
               </h2>
@@ -392,34 +392,75 @@ export default function GamesPage() {
                   up in Admin → Matchups.
                 </p>
               ) : (
-                <MatchTable
-                  a={{
-                    label: groupLabel(data, roundGroups[0]),
-                    labelClassName: teamColor("A"),
-                    byHole: bestBallByHole(
-                      data,
-                      round,
-                      course,
-                      data.groupMembers
-                        .filter((m) => m.group_id === roundGroups[0].id)
-                        .map((m) => m.player_id),
-                      2
-                    ),
-                  }}
-                  b={{
-                    label: groupLabel(data, roundGroups[1]),
-                    labelClassName: teamColor("B"),
-                    byHole: bestBallByHole(
-                      data,
-                      round,
-                      course,
-                      data.groupMembers
-                        .filter((m) => m.group_id === roundGroups[1].id)
-                        .map((m) => m.player_id),
-                      2
-                    ),
-                  }}
-                />
+                (() => {
+                  const byHoleA = bestBallByHole(
+                    data,
+                    round,
+                    course,
+                    data.groupMembers
+                      .filter((m) => m.group_id === roundGroups[0].id)
+                      .map((m) => m.player_id),
+                    2
+                  );
+                  const byHoleB = bestBallByHole(
+                    data,
+                    round,
+                    course,
+                    data.groupMembers
+                      .filter((m) => m.group_id === roundGroups[1].id)
+                      .map((m) => m.player_id),
+                    2
+                  );
+                  const { toPar: toParA, thru: thruA } = teamScoreToPar(byHoleA, course, 2);
+                  const { toPar: toParB, thru: thruB } = teamScoreToPar(byHoleB, course, 2);
+                  const winner =
+                    toParA != null && toParB != null
+                      ? toParA < toParB
+                        ? "A"
+                        : toParB < toParA
+                          ? "B"
+                          : "T"
+                      : null;
+                  const fmt = (v: number | null) =>
+                    v == null ? "–" : v === 0 ? "E" : v > 0 ? `+${v}` : v;
+                  return (
+                    <>
+                      <MatchTable
+                        a={{
+                          label: groupLabel(data, roundGroups[0]),
+                          labelClassName: teamColor("A"),
+                          byHole: byHoleA,
+                        }}
+                        b={{
+                          label: groupLabel(data, roundGroups[1]),
+                          labelClassName: teamColor("B"),
+                          byHole: byHoleB,
+                        }}
+                      />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {[
+                          { g: roundGroups[0], toPar: toParA, thru: thruA, side: "A" as const },
+                          { g: roundGroups[1], toPar: toParB, thru: thruB, side: "B" as const },
+                        ].map(({ g, toPar, thru, side }) => (
+                          <div
+                            key={g.id}
+                            className={`rounded-xl border p-3 ${
+                              winner === side
+                                ? "border-emerald-600 bg-emerald-500/10"
+                                : "border-neutral-800 bg-neutral-900/40"
+                            }`}
+                          >
+                            <p className={`font-medium ${teamColor(side)}`}>
+                              {groupLabel(data, g)}
+                            </p>
+                            <p className="text-2xl font-semibold">{fmt(toPar)}</p>
+                            <p className="text-xs text-neutral-500">Thru {thru}/18 · lower wins</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()
               )}
             </section>
           )}
