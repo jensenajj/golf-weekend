@@ -8,6 +8,7 @@ import { allHolesEntered, bestBallByHole, scoreMatch } from "@/lib/matchplay";
 import { scrambleComplete, scrambleTotal } from "@/lib/scramble";
 import { computeAllSkins } from "@/lib/skins";
 import { computeLowNet } from "@/lib/lowNet";
+import { defaultWinAmount, tieAmountFor } from "@/lib/money";
 import { Round } from "@/lib/types";
 
 function formatMoney(v: number): string {
@@ -24,9 +25,10 @@ type RoundPayoutResult = {
 
 function payoutAmountsFor(data: FullData, round: Round) {
   const row = data.roundPayouts.find((p) => p.round_id === round.id);
+  const win = row?.win_amount ?? defaultWinAmount(round);
   return {
-    win: row?.win_amount ?? 20,
-    tie: row?.tie_amount ?? 10,
+    win,
+    tie: tieAmountFor(win),
     lowNetPrize: row?.low_net_amount ?? 20,
   };
 }

@@ -94,11 +94,14 @@ create table if not exists round_handicaps (
 
 -- Per-round dollar amounts for the money pot. "win_amount" is paid to each
 -- player on the winning side (winning group for individual rounds, winning
--- team for scrambles); "tie_amount" is paid to every player involved if
--- that round's game ties instead. "low_net_amount" only applies to
--- individual rounds -- paid to whoever's 18-hole net total is lowest
--- across the full field (both groups), split evenly on a tie. Missing row
--- = defaults (20/10/20) in code.
+-- team for scrambles); missing row defaults to $20/$30/$40 for Friday/
+-- Saturday/Sunday AM (individual rounds) or $20 for scrambles, all set in
+-- code (lib/money.ts). "tie_amount" is no longer read by the app -- a tie
+-- always pays half the win amount, computed rather than stored; the column
+-- is kept only because dropping it isn't worth the churn on a live table.
+-- "low_net_amount" only applies to individual rounds -- paid to whoever's
+-- 18-hole net total is lowest across the full field (both groups), split
+-- evenly on a tie. Missing row = defaults (20) in code.
 create table if not exists round_payouts (
   round_id uuid primary key references rounds(id) on delete cascade,
   win_amount numeric not null default 20,
