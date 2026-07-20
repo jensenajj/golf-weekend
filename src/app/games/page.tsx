@@ -32,6 +32,20 @@ function cartLabel(data: FullData, cart: { id: string; name: string }): string {
   return names.length > 0 ? names.join("/") : cart.name;
 }
 
+function teamLabel(data: FullData, team: { id: string; name: string }): string {
+  const names = memberNames(
+    data,
+    data.teamMembers.filter((m) => m.team_id === team.id).map((m) => m.player_id)
+  );
+  return names.length > 0 ? names.join(", ") : team.name;
+}
+
+// Team A always reads blue, Team B always reads red, so the two team-total
+// cards (singles and cart pairs alike) are easy to tell apart at a glance.
+function teamColor(side: "A" | "B"): string {
+  return side === "A" ? "text-sky-400" : "text-red-400";
+}
+
 function MatchTable({ a, b }: { a: MatchSide; b: MatchSide }) {
   const result = scoreMatch(a, b);
   return (
@@ -265,7 +279,9 @@ export default function GamesPage() {
                               : "border-neutral-800 bg-neutral-900/40"
                           }`}
                         >
-                          <p className="font-medium">{team.name}</p>
+                          <p className={`font-medium ${teamColor(side)}`}>
+                            {teamLabel(data, team)}
+                          </p>
                           <p className="text-2xl font-semibold">{total}</p>
                           <p className="text-xs text-neutral-500">
                             {singles.complete ? "Final" : "In progress"}
@@ -343,7 +359,9 @@ export default function GamesPage() {
                               : "border-neutral-800 bg-neutral-900/40"
                           }`}
                         >
-                          <p className="font-medium">{team.name}</p>
+                          <p className={`font-medium ${teamColor(side)}`}>
+                            {teamLabel(data, team)}
+                          </p>
                           <p className="text-2xl font-semibold">{total}</p>
                           <p className="text-xs text-neutral-500">
                             {result.complete ? "Final" : "In progress"}
