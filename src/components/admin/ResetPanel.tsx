@@ -24,15 +24,24 @@ async function wipeWeekend() {
   if (failed?.error) throw failed.error;
 }
 
+const CONFIRM_PHRASE = "RESET";
+
 export function ResetPanel() {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [confirmText, setConfirmText] = useState("");
+
+  function backToIdle() {
+    setStage("idle");
+    setConfirmText("");
+  }
 
   async function runReset() {
     setStage("working");
     setError(null);
     try {
       await wipeWeekend();
+      setConfirmText("");
       setStage("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
@@ -41,6 +50,7 @@ export function ResetPanel() {
   }
 
   if (stage === "confirming" || stage === "working") {
+    const canConfirm = confirmText.trim() === CONFIRM_PHRASE;
     return (
       <div className="space-y-4 rounded-xl border border-red-900/60 bg-red-950/20 p-4">
         <p className="text-sm font-medium text-red-300">
@@ -51,16 +61,33 @@ export function ResetPanel() {
           Players, their handicaps, round setup (course/format), and Money settings (pot
           amounts, win/tie amounts) are all kept exactly as they are.
         </p>
+        <label className="block space-y-1.5">
+          <span className="text-sm text-neutral-400">
+            Type <span className="font-mono font-semibold text-red-300">{CONFIRM_PHRASE}</span>{" "}
+            to confirm.
+          </span>
+          <input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            disabled={stage === "working"}
+            autoFocus
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder={CONFIRM_PHRASE}
+            className="w-full max-w-[200px] rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-mono tracking-wider disabled:opacity-60"
+          />
+        </label>
         <div className="flex gap-2">
           <button
             onClick={runReset}
-            disabled={stage === "working"}
-            className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+            disabled={!canConfirm || stage === "working"}
+            className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-red-900 disabled:text-red-300/60 disabled:opacity-60"
           >
             {stage === "working" ? "Wiping…" : "Yes, wipe everything"}
           </button>
           <button
-            onClick={() => setStage("idle")}
+            onClick={backToIdle}
             disabled={stage === "working"}
             className="rounded-full bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-300 disabled:opacity-60"
           >
@@ -79,7 +106,7 @@ export function ResetPanel() {
           will pick this up automatically.
         </p>
         <button
-          onClick={() => setStage("idle")}
+          onClick={backToIdle}
           className="rounded-full bg-neutral-800 px-4 py-2 text-sm font-medium text-neutral-300"
         >
           Close
